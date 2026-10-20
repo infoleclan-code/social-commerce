@@ -1,0 +1,66 @@
+---
+description: PostgreSQL conventions and the social schema (users, follows, reels, likes, comments). Commerce tables are out of scope.
+globs: **/database/**, **/app/Models/**, **/app/Enums/**
+alwaysApply: false
+---
+
+# Database schema (PostgreSQL 15+)
+
+The social schema is users, devices, consents, connections, and the Reels tables. Do not query or migrate
+legacy commerce tables (merchants, products, carts, orders, drops, closet, resale, affiliate, ledger, payouts).
+
+## Conventions
+- Primary keys: `uuid`, version 7 (`gen_uuid_v7()` default; Laravel `HasUuids` also makes v7).
+  Models use `App\Models\Concerns\PostgresModel` (HasUuids + timestamptz date format).
+- Enumerations: `text` + `CHECK (col IN (...))`, mirrored 1:1 by a PHP backed enum in `app/Enums` and cast
+  on the model. `tests/Feature/SchemaParityTest.php` fails if they drift.
+- JSON: `jsonb` with a `jsonb_typeof` CHECK; cast as `array` in Eloquent.
+- Timestamps: `timestamptz`. `created_at`/`updated_at` on mutable tables (a trigger fills `updated_at`
+  for raw SQL writes). Append-only tables (`feed_post_likes`, `user_consents`) have no `updated_at`.
+- Ownership of a connection is the unordered pair: `LEAST` / `GREATEST` of the two user ids.
+
+## Tables
+| Table | Purpose / key rules |
+|---|---|
+| users | Accounts. Privacy columns default to the most private value. Never hard-delete: `SELECT anonymize_user(:id)`. Posting and commenting require `social_feed_enabled`. |
+| user_devices | One row per app install; Expo push token; revoke on logout. |
+| user_consents | Append-only consent log; newest row per purpose wins. UPDATE is rejected. |
+| social_connections | One row per unordered user pair (request / accept / decline / block). `source` is `invite_code`, `contacts`, `search`, or `profile`. |
+| feed_posts | Reels. `kind` is only `media`, and `media_path` is required. Videos require `thumbnail_path`. Tags are a jsonb array of at most 10 strings, indexed with `feed_posts_tags_gin` for hashtag filters. Soft-deleted with `deleted_at`. |
+| feed_post_likes | One like per user per post. Primary key `(post_id, user_id)`. |
+| feed_post_comments | Body 1–1000 chars. One level of replies, same post as the parent (composite FK). Soft-deleted with `deleted_at`. |
+
+## Columns you must NEVER write from PHP
+- `feed_posts.likes_count`, `feed_posts.comments_count`, `feed_posts.rank_score` — triggers own them.
+  Insert or delete `feed_post_likes` / `feed_post_comments` (or set `deleted_at` on a comment).
+- `feed_posts.shares_count` is the exception: the share action increments it, and the rank trigger
+  recomputes `rank_score` from that update. Do not set `rank_score` yourself.
+
+`rank_score` is `log(greatest(likes + 2*comments + 3*shares, 1)) + epoch(created_at) / 45000`.
+
+## State machine (`status_transitions`)
+- social_connections: pending -> accepted | declined | blocked; accepted -> blocked; declined -> pending | blocked.
+To add a move: a new migration inserting into `status_transitions`, plus a test. Never bypass with raw SQL.
+
+## Errors you will see (SQLSTATE)
+- `23514` check_violation: illegal status transition, comment without social opt-in, reply-to-a-reply,
+  media shape (video without a poster, media fields on a non-media row), tag shape.
+- `23505` unique_violation: duplicate like, duplicate connection. For idempotent writes, re-read and continue.
+- `23503` foreign_key_violation: comment parent on a different post, or a missing user/post.
+- `23001` restrict_violation: writing an immutable or trigger-owned column.
+Map them to domain exceptions in services; never retry blindly and never catch-and-ignore.
+
+## Changing the schema
+1. New migration file. PostgreSQL features are welcome.
+2. New enum value: update the CHECK (drop + re-add), the PHP enum, and any transitions.
+3. Add indexes for every new foreign key; prefer partial indexes for status-filtered queues
+   (the For You index is partial on `audience = public AND deleted_at IS NULL`).
+4. Update `.cursor/rules/10-database.mdc` in the same change.
+
+## Query rules
+- Eager load (`with()`); strict mode throws on lazy loading in non-production.
+- Paginate with keyset / `cursorPaginate()` on `(rank_score, id)` or `(created_at, id)`. Never OFFSET.
+- For You cursors compare `rank_score` with `?::double precision` using `getRawOriginal`. Never round the score.
+- Scope every user-facing query by the viewer (visibility + blocks) or by the authenticated owner. Never trust ids from the client.
+- No string-interpolated SQL. Bindings only.
+- Friends: `$user->friends()` (one query, both directions). Do not union the two relations by hand.

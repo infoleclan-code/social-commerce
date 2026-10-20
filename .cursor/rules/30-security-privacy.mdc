@@ -1,0 +1,45 @@
+---
+description: Security, privacy, authorization, and abuse limits for the social platform. Applies to backend and mobile.
+alwaysApply: true
+---
+
+# Security and privacy
+
+This platform does not take payments and does not collect card data. Do not add a payment provider,
+a card form, or checkout.
+
+## GDPR / privacy
+- Privacy by default: `social_feed_enabled` defaults off. Creating a post or a comment requires that flag
+  (database-enforced) plus an explicit action. Audience defaults to the stricter choice the user picked;
+  do not silently publish as public.
+- Lawful basis per data use. Marketing pushes and analytics SDKs need consent recorded in `user_consents`
+  (append-only; check with `UserConsent::isGranted()`). Transactional notifications (a comment on your
+  reel, a follow request) do not.
+- Data minimization: no date of birth, no contacts upload unless `contacts_matching` consent (hash phone
+  numbers and emails on the device before upload), no raw IP or user agent (store HMAC hashes only).
+- Never query by an encrypted column. Device fingerprints use HMAC with `FINGERPRINT_PEPPER`.
+- Serialization: `User` exposes only id, username, display_name, avatar_path by default. Any other field
+  goes through an explicit API Resource checked by a policy. Never expose email, devices, consents, or
+  `risk_status` to other users. Never expose who liked a post.
+- Right of access (Art. 15/20): export the user, consents, devices (without push tokens), posts, comments,
+  likes, and connections.
+- Right to erasure (Art. 17): `anonymize_user()` after the grace period, then purge that user's media from
+  object storage and the CDN, plus search indexes and analytics. The user row is scrubbed, not deleted.
+- Retention: purge `inbound_webhooks.payload` after 90 days.
+- Logs and monitoring: no PII, no tokens, no full URLs with query strings.
+- Processors (object storage, CDN, Expo push, email, analytics, hosting) need DPAs; send them the minimum.
+
+## Authorization
+- Every model a user can mutate has a Policy; controllers call `authorize()` or `can` middleware.
+- Load owned resources through the authenticated user (`$request->user()->posts()->findOrFail($id)`).
+  A feed read of someone else's reel still goes through `visibleTo` and the block filter.
+- Sanctum tokens per device with abilities; revoke on logout and when a device is revoked.
+- Rate-limit auth, OTP, follow requests, post creation, likes, comments, shares, and webhooks.
+- Admin actions use a separate guard and 2FA.
+
+## Abuse
+- Velocity checks on posts, comments, likes, follows, and new accounts from the same
+  `device_fingerprint_hash`. Set `users.risk_status` to `review` or `restricted` when a limit is exceeded.
+  Restricted users cannot post, comment, or follow.
+- Webhooks: verify signatures or allow-listed sources, store the event first, process it idempotently.
+- Uploads are re-encoded before they are stored. Reject anything that is not an allowed image or video type.

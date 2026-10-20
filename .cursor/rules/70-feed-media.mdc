@@ -1,0 +1,41 @@
+---
+description: Feed read path, media processing, and the API contract for reels. Use when changing feed queries, video processing, or reel resources.
+globs: **/app/Services/Feed/**, **/app/Services/Media/**, **/app/Support/MediaUrl.php, **/app/Http/**, **/config/feed.php, **/mobile/src/features/reels/**, **/mobile/src/api/**
+alwaysApply: false
+---
+
+# Feed and media
+
+## Reads
+- `GET /api/v1/feed` returns one page of reels the viewer may see. For You is ranked public media.
+  Following is chronological media from the viewer and accepted friends. Both exclude blocked authors
+  and soft-deleted rows.
+- Pagination is keyset only. The For You cursor carries the exact `rank_score` text (`getRawOriginal`)
+  and is compared with `?::double precision`. Never OFFSET, never round the score.
+- A single-post read uses the same visibility scope. A missing or hidden post is a 404, not an empty reel.
+- Resources expose: id, author (id, username, display_name, avatar), caption, tags, audience, media type,
+  CDN urls from `MediaUrl`, width, height, duration, counts, `viewer.liked`, `created_at`.
+  They do not expose storage keys, liker ids, or `rank_score`.
+
+## Writes that the read path depends on
+- Counters and `rank_score` stay in the database triggers described in `10-database.mdc` and `20-engagement.mdc`.
+- Comment inserts are pre-checked and then guarded again by the database. Keep both.
+
+## Media
+- Videos go through the ffmpeg processor (ffprobe validation, metadata stripped, `+faststart`, poster).
+  Images are re-encoded and EXIF-stripped. Limits live in `config/feed.php` (`video.max_kb`,
+  `video.max_duration_ms`, `image.max_edge`).
+- The database stores disk keys. `MediaUrl` builds the CDN url. Never persist a public bucket URL.
+- Reject a video that has no poster. Reject a media post with no `media_path`.
+
+## API contract
+- Every response is an API Resource wrapped in `{ data }`. Errors are `ApiException` with a stable `code`.
+  Add new codes to `ApiException` and to the app's copy table in the same change.
+- Update `mobile/src/api/contracts.ts` whenever a resource changes shape (until types are generated).
+
+## Mobile playback
+- Purchases and scans do not exist on these screens. The only optimistic write is a like, corrected with
+  the server's count.
+- One `expo-video` player per mounted page; only the focused, foreground page plays. `FlatList` with
+  `windowSize` 3. Do not recycle native players.
+- Strings go through `t()`; touchables have accessibility labels; respect Reduce Motion for loops.

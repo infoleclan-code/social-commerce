@@ -1,0 +1,45 @@
+---
+description: Social flows — publishing a reel, likes, comments, shares, follows, and blocks.
+globs: **/app/Services/Feed/**, **/app/Http/**, **/app/Jobs/**, **/app/Events/**
+alwaysApply: false
+---
+
+# Social flows
+
+## Publish a reel
+1. The user has `social_feed_enabled`. If not, return `social_opt_in_required` and do not insert.
+2. Accept an image or a video, an optional caption (max `config('feed.caption_max')`), up to
+   `config('feed.max_tags')` string tags, and an audience of `friends` or `public`.
+3. Process media (see the backend media pipeline), then insert one `feed_posts` row with `kind = media`.
+   The database requires `media_path` for that kind, and `thumbnail_path` when `media_type = video`.
+4. Do not attach a product, a closet item, a drop, or a price. Do not set `show_price`.
+
+## Delete a reel
+- The author soft-deletes their own post. Likes and comments cascade with the row only on a hard delete;
+  a soft delete hides the post through `deleted_at` and the visibility scopes. Confirm the policy
+  allows only the author (or an admin) to delete.
+
+## Like and unlike
+- `POST /api/v1/feed/{post}/like` and `DELETE /api/v1/feed/{post}/like`.
+- The post must be visible to the viewer. A duplicate like returns the current count with `liked: true`.
+- An unlike of a post the user has not liked returns `liked: false` and the current count.
+
+## Comment
+- `GET` and `POST /api/v1/feed/{post}/comments`. `DELETE /api/v1/comments/{comment}` soft-deletes.
+- The viewer must be allowed to see the post. Creating a comment also requires social opt-in.
+- Replies pass `parent_id`. Replying to a reply is `comment_not_allowed`.
+
+## Share
+- `POST /api/v1/feed/{post}/share` records the share and returns the new `shares_count`.
+- The public link is `/p/{post}`. Recording a share does not grant visibility; the recipient still
+  passes `visibleTo` and the block filter.
+
+## Follow, block
+- A connection is one `social_connections` row for the unordered pair. Move it with `transitionTo`.
+- `pending` is a request. `accepted` makes friends-audience posts visible in both directions.
+- `blocked` hides each person's posts, comments, and likes-of-theirs from the other on every read.
+- A user cannot follow, comment toward, or appear in the feed of someone they have blocked, or who has blocked them.
+
+## Notifications
+- Transactional (no extra consent): someone commented on your reel, someone accepted your follow request.
+- Marketing (consent required): recommendations, campaigns, "people you may know".

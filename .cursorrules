@@ -1,0 +1,13 @@
+# Project
+
+We are building a global, scalable social media platform: a Reels feed, videos, likes, and comments.
+
+# Scope
+
+Strictly forbid and ignore any legacy e-commerce or scanner logic.
+
+# Tech stack
+
+- Backend: Laravel
+- Database: PostgreSQL
+- Mobile: Expo / React Native

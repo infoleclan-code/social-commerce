@@ -1,0 +1,57 @@
+---
+description: Expo / React Native rules for the Reels feed, video playback, likes, comments, and privacy UX.
+globs: **/mobile/**, **/*.tsx, **/*.ts
+alwaysApply: false
+---
+
+# Mobile app (Expo, React Native, TypeScript)
+
+## Structure
+- `mobile/app/` Expo Router routes only (thin screens). The Reels tab is `mobile/app/(tabs)/reels.tsx`.
+- `mobile/src/features/reels/` — player, comments sheet, feed cache, playback store.
+- `mobile/src/api/` — HTTP client, generated types, query hooks. `mobile/src/stores/` — Zustand.
+- TypeScript `strict`, no `any`. API types are generated from the backend OpenAPI document into
+  `src/api/types.gen.ts`. Until then, update `mobile/src/api/contracts.ts` in the same change as a resource.
+
+## State
+- SERVER STATE = TanStack Query. The feed, comments, profiles, and the viewer's liked flag are read with
+  `useQuery` / `useInfiniteQuery` and changed with `useMutation`. Never copy server data into Zustand.
+- Query keys come from one factory in `src/api/keys.ts`: `['feed', 'for-you']`, `['feed', postId, 'comments']`,
+  `['me', 'profile']`. Mutations invalidate only the keys they affect.
+- CLIENT STATE = Zustand, UI-only: the comments sheet, playback position, caption draft, onboarding step.
+  Small stores per feature.
+- Persistence: the auth token ONLY in `expo-secure-store`. Non-sensitive UI prefs may use MMKV or
+  AsyncStorage. Never persist other people's posts, comments, or device tokens.
+- Optimistic updates ONLY for likes (then replace the count with the server's `likes_count`).
+  Posts, comments, and follows wait for the server.
+
+## Video
+- `expo-video` with caching. One player per mounted page. Only the page on screen plays, and only while
+  the screen is focused and the app is in the foreground.
+- The Reels list is a `FlatList` with `windowSize` 3. Do not use FlashList here: recycled cells reuse
+  native players. Set player properties in effects or helpers, never during render.
+- The list re-reports the same visible item when `extraData` changes. Only a real page change may reset
+  per-page UI state.
+- `pointerEvents: 'box-none'` comes from `StyleSheet.create` (and the `pointerEvents` prop on Reanimated
+  views), or react-native-web ignores it.
+- Sheets over the feed are in-tree views, not native `<Modal>`s.
+
+## Upload
+- Resize images and re-encode on the device before upload so EXIF and GPS never leave the phone.
+- Send the file, caption, tags, and audience. Do not send a product id or a client-computed rank.
+
+## Push and links
+- Ask for notification permission in context (for example after the first publish), not on first launch.
+  Register the Expo token with `POST /api/v1/devices`; delete it on logout. Marketing notifications only
+  after `marketing_push` consent.
+- Post links are `https://<domain>/p/{post}`. Opening one fetches that reel from the API.
+
+## Privacy UX
+- Publishing is an explicit action and shows the audience ("Friends" or "Public") before the request.
+  The default remains off until the user opts in (`social_feed_enabled`).
+- Do not initialize analytics SDKs before consent. No PII in analytics events, logs, or crash reports.
+- Contacts only after `contacts_matching` consent; hash identifiers on the device before upload.
+
+## Quality
+- Screens handle loading, empty, error, and offline states. Lists use a stable `keyExtractor` (the id).
+  Accessibility labels on every touchable. All strings go through `t()`. Respect Reduce Motion.

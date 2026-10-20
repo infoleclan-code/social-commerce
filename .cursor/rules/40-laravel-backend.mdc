@@ -1,0 +1,62 @@
+---
+description: Laravel code style, feed API, queues, media jobs, and testing for the backend.
+globs: **/app/**/*.php, **/routes/**, **/tests/**, **/config/**, **/bootstrap/**
+alwaysApply: false
+---
+
+# Laravel backend
+
+## Style
+- PHP 8.3+, `declare(strict_types=1);` in every file, full type declarations, Laravel Pint (laravel preset).
+  Static analysis: Larastan; no new baseline entries.
+- Services and actions are `final`; value objects are `final readonly`. No facades inside domain
+  services except `DB` — inject collaborators through the constructor.
+- Enums over strings: every CHECK-constrained column is cast to its `App\Enums` enum. Compare enums with
+  `===`, never with raw strings.
+- Model `$fillable` lists only user-editable fields. System fields (kind, media paths, counters, audience
+  when set by the service) are set with `forceFill()` inside services.
+- Status changes: `$model->transitionTo(Status::X)`. Catch `InvalidStatusTransition`.
+- Names: controllers `XController` (thin), requests `XRequest`, resources `XResource`, actions `DoThing`
+  (one public `handle()`), jobs `ProcessX`, events past tense (`ReelPublished`).
+
+## Architecture
+- Request -> FormRequest (validation + authorization) -> Service (business logic, DB transaction)
+  -> Model. Controllers never contain business logic.
+- API: `/api/v1/feed`, `/api/v1/feed/{post}/like`, `/api/v1/feed/{post}/share`,
+  `/api/v1/feed/{post}/comments`, `/api/v1/comments/{comment}`. JSON only, API Resources for every
+  response, keyset pagination, ISO-8601 UTC timestamps.
+  Errors: `{ "message": ..., "code": "SOCIAL_OPT_IN_REQUIRED", "errors": {...} }`.
+- DB transactions wrap one business step (`DB::transaction(fn () => ..., attempts: 3)`).
+  ffmpeg, object storage, and Expo run OUTSIDE the transaction; dispatch jobs with `afterCommit()`.
+- Map database errors to domain exceptions (`check_violation` on the comment guard -> a 422 with a stable
+  `code`). Use the constraint name. Never catch-and-ignore.
+
+## Media pipeline
+1. Validate type, size, and duration against `config/feed.php`.
+2. Images: re-encode, strip EXIF, cap the longest edge. Videos: ffprobe, strip metadata, `+faststart`,
+   require a poster frame. `passthrough` is local development only.
+3. Store the storage key on `feed_posts`. Build the URL with `MediaUrl` at read time.
+4. A failed process job must not leave a public object behind.
+
+## Queues and schedule (Horizon + Redis)
+- Queues: `media`, `notifications`, `default`. Media jobs are idempotent.
+- Scheduled: orphan-upload cleanup, webhook payload purge.
+
+## Realtime and push
+- Laravel Reverb broadcasts on private channels `users.{id}`. Payloads carry ids and counts only;
+  clients refetch the reel or the comment page.
+- Push via Expo from a queued job, only to `UserDevice::pushable()` devices; drop tokens Expo reports as
+  `DeviceNotRegistered`. Marketing pushes require consent.
+
+## Testing
+- PostgreSQL for tests (`DB_CONNECTION=pgsql` in `phpunit.xml`). SQLite cannot run this schema.
+- Feature tests use `RefreshDatabase`. Cover visibility, blocks, like idempotency, comment depth,
+  the social opt-in refusal, and trigger-maintained counts.
+- CI runs PHPUnit/Pest, Pint, and Larastan.
+- Every new invariant gets a test that proves the database rejects the bad state.
+
+## Performance
+- Eager load; strict mode throws on lazy loading outside production.
+- Add an index with every new foreign key or filtered query; prefer partial indexes.
+- `feed_post_likes` and `feed_post_comments` grow fastest. Keep list queries on the partial indexes
+  (`feed_posts_for_you_idx`, `feed_post_comments_thread_idx`).

@@ -1,0 +1,6 @@
+# Local secrets. Example files stay tracked.
+.env
+.env.*
+!.env.example
+
+.DS_Store

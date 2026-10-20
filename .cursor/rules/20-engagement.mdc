@@ -1,0 +1,38 @@
+---
+description: Reels engagement — likes, comments, shares, ranking, and the counters the database owns.
+globs: **/app/Services/Feed/**, **/app/Http/**Feed*, **/app/Models/Feed*.php, **/config/feed.php
+alwaysApply: false
+---
+
+# Engagement
+
+## Likes
+- Like = insert `feed_post_likes`. Unlike = delete that row. The primary key makes a second like a no-op;
+  return the current `{ liked, likes_count }` either way.
+- Liking does not require `social_feed_enabled`. The liker list is private and is never an API field.
+- The like trigger maintains `likes_count`. Read the count back after the write; do not increment it in PHP.
+
+## Comments
+- Creating a comment requires `social_feed_enabled`. The database rejects the insert otherwise;
+  `CommentService` also checks first so the API can return `social_opt_in_required`.
+- Threads are one level deep. A reply's `parent_id` must be a top-level comment on the same post.
+  The composite FK and `feed_post_comments_guard` enforce this. Pre-check in PHP for a clear error, and
+  wrap the insert in `DB::transaction()` so a refused insert does not abort an outer transaction.
+- Body is trimmed, 1–1000 characters (`config('feed.comments.max_length')`).
+- Delete is a soft delete (`deleted_at`). The count trigger adjusts `comments_count` only for visible rows.
+- List top-level comments oldest first, with reply counts. Deeper reply pages use the same endpoint with
+  `parent_id`. Exclude comments whose author is in a blocked pair with the viewer. Keyset on `(created_at, id)`.
+
+## Shares
+- `POST /api/v1/feed/{post}/share` increments `shares_count` on a post the viewer can see. That update
+  fires the rank trigger. Do not write `rank_score` in the same statement.
+
+## Ranking
+- For You reads public, non-deleted media posts ordered by `rank_score DESC, id DESC`.
+- The first pages of that order may be cached (`for_you_cache_seconds`, `for_you_cached_pages`) and then
+  re-filtered per viewer for blocks. Cache ids, not assembled resources.
+- Following is chronological: the viewer's own media posts plus friends' media posts, `created_at DESC, id DESC`.
+
+## Rate limits
+Per user, from `config/feed.php`: posts per hour, likes per minute, comments per minute, shares per minute.
+Throttle the matching routes (`feed-post`, `feed-like`, `feed-comment`, `feed-share`, `feed-read`).

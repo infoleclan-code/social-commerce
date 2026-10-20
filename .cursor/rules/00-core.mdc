@@ -1,0 +1,62 @@
+---
+description: Product context, stack, repository layout and the non-negotiable rules for every change in this repo.
+alwaysApply: true
+---
+
+# Project core
+
+## What we are building
+A global, scalable social media platform. People publish short videos and images to a Reels feed,
+follow each other, like posts, comment, and share. The feed has a ranked For You and a chronological
+Following. Posts are public or friends-only, and nothing is published unless the user explicitly posts it.
+
+## Out of scope
+Do not read, extend, or implement legacy e-commerce or scanner behavior: merchants, products, carts,
+orders, drops, closet, resale, affiliate networks, cashback, the ledger, payouts, visual search, or
+checkout. Leave that code untouched.
+
+## Stack (do not introduce alternatives without asking)
+- Backend: Laravel (PHP 8.3+), PostgreSQL 15+ (production and tests — never SQLite), Redis queues
+  with Horizon, Laravel Reverb for realtime, Sanctum tokens for the mobile app.
+- Mobile: Expo / React Native, TypeScript strict, Expo Router, TanStack Query, Zustand.
+- Media: object storage plus a CDN; ffmpeg/ffprobe for video; expo-video on mobile.
+
+## Repository layout
+- `backend/app/Services/Feed` — feed ranking, posts, likes, comments, shares.
+- `backend/app/Services/Media` and `backend/app/Support/MediaUrl` — video/image processing and CDN URLs.
+- `backend/app/Http/{Controllers,Requests,Resources}` — `FeedController`, `FeedCommentController`.
+- `backend/app/Models` — `FeedPost`, `FeedPostComment`. `backend/app/Enums` — `FeedPostKind`,
+  `FeedAudience`, `MediaType`.
+- `backend/config/feed.php` — page sizes, media limits, rate limits.
+- `backend/database/migrations/2026_10_12_000300_extend_feed_for_media_and_engagement.php` — media posts,
+  likes, comments, and the rank trigger.
+- `mobile/app/(tabs)/reels.tsx` and `mobile/src/features/reels/` — the Reels player, comments sheet, and cache.
+- `docs/ARCHITECTURE.md` — system design. Prefer these rules when a doc still describes commerce.
+
+## Non-negotiable rules
+1. New posts are `kind = media` (image or video). Do not create purchase, closet, drop, or resale posts,
+   and do not accept a `product_id`.
+2. `likes_count`, `comments_count`, and `rank_score` are trigger-maintained. Insert or delete the like or
+   comment row. Never write those three columns from PHP.
+3. Every feed read uses `FeedPost::visibleTo($viewer)` and excludes blocked pairs. Who liked a post is
+   never returned; the client gets `likes_count` and `viewer.liked` only.
+4. Comments require `users.social_feed_enabled` (database-enforced) and are one level deep. A reply must
+   belong to the same post as its parent.
+5. Change status columns only with `$model->transitionTo(Enum::Case)`. Legal moves live in
+   `status_transitions`; a refused move throws `InvalidStatusTransition`.
+6. Never return Eloquent models from controllers. Use API Resources that list fields explicitly.
+7. Never store or log auth tokens, raw IP addresses, push tokens, or precise location. Media metadata
+   (EXIF, GPS) is stripped before the file is stored. The database stores storage keys, never public URLs.
+8. Schema changes are NEW migrations. Never edit a migration that has already run. Change the SQL, the PHP
+   enum, the model casts, and these rules in the same change.
+9. A database constraint error means the caller is wrong. Fix the caller; never weaken, drop, or bypass a
+   constraint or trigger.
+10. Ask before adding a dependency, a new table, or a new external service.
+
+## Glossary
+- Reel: a `feed_posts` row with `kind = media` — one image or one video plus an optional caption and tags.
+- For You: public reels ordered by trigger-maintained `rank_score` (engagement plus recency).
+- Following: the viewer's own reels and friends' reels, newest first.
+- Like: a `feed_post_likes` row. The primary key is `(post_id, user_id)`, so liking twice is a no-op.
+- Comment: a `feed_post_comments` row. `parent_id` is null for a top-level comment; replies cannot have replies.
+- Audience: `public` or `friends`. Friends means an accepted `social_connections` row.
