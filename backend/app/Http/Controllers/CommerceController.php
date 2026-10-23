@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Models\FeedPost;
 use App\Models\Product;
 use App\Services\Commerce\CheckoutService;
 use App\Services\Commerce\RewardService;
 use App\Services\Feed\FeedService;
 use App\Services\Feed\TasteService;
+use App\Support\Currency;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -33,6 +35,7 @@ final class CommerceController extends Controller
             'referral_token' => ['nullable', 'string', 'regex:/^[A-Za-z0-9]{10,32}$/'],
             'share_publicly' => ['sometimes', 'boolean'],
             'expected_total_minor' => ['sometimes', 'nullable', 'integer', 'min:0'],
+            'address_id' => ['sometimes', 'nullable', 'uuid'],
         ]);
         $key = $this->idempotencyKey($request);
 
@@ -47,6 +50,7 @@ final class CommerceController extends Controller
             $data['referral_token'] ?? null,
             (bool) ($data['share_publicly'] ?? false),
             isset($data['expected_total_minor']) ? (int) $data['expected_total_minor'] : null,
+            $data['address_id'] ?? null,
         );
 
         return new JsonResponse(['data' => $order], $order['replayed'] ? 200 : 201);
@@ -139,11 +143,10 @@ final class CommerceController extends Controller
 
     public function store(Request $request, string $user): JsonResponse
     {
+        $postIds = FeedPost::query()->visibleTo($request->user())->where('user_id', $user)->pluck('id');
         $products = Product::query()
-            ->whereIn('id', function ($query) use ($user): void {
-                $query->select('product_id')->from('reel_product_tags')->whereIn('post_id', function ($posts) use ($user): void {
-                    $posts->select('id')->from('feed_posts')->where('user_id', $user)->whereNull('deleted_at');
-                });
+            ->whereIn('id', function ($query) use ($postIds): void {
+                $query->select('product_id')->from('reel_product_tags')->whereIn('post_id', $postIds);
             })
             ->orderBy('title')
             ->get();
@@ -154,11 +157,7 @@ final class CommerceController extends Controller
             'brand' => $product->brand,
             'image_url' => $product->image_url,
             'try_on' => (bool) $product->try_on_enabled,
-            'price' => [
-                'amount_minor' => (int) $product->price_minor,
-                'currency' => $product->currency,
-                'minor_unit' => 2,
-            ],
+            'price' => Currency::money((int) $product->price_minor, (string) $product->currency),
         ])->all()]);
     }
 

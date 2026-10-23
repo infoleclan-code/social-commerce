@@ -6,10 +6,15 @@ namespace App\Services\Commerce;
 
 use App\Exceptions\ApiException;
 use App\Models\User;
+use App\Services\Payments\AuthorizeRequest;
+use App\Services\Payments\CardPaymentService;
+use App\Services\Payments\PaymentGateway;
 use App\Support\Currency;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Throwable;
 
 /**
  * Habit loops (check-in, missions, a once-a-day spin) and scale loops
@@ -25,7 +30,11 @@ final class HabitScaleService
         ['discount_bps' => 3000, 'weight' => 500, 'label' => '30% off'],
     ];
 
-    public function __construct(private readonly Purchases $purchases) {}
+    public function __construct(
+        private readonly Purchases $purchases,
+        private readonly CardPaymentService $cards,
+        private readonly PaymentGateway $gateway,
+    ) {}
 
     /**
      * A gift is a real purchase: the buyer's card is authorized and captured like any order, and the
@@ -40,7 +49,7 @@ final class HabitScaleService
         if ($existing !== null && ((string) $existing->product_id !== $productId || $existing->purpose !== 'gift')) {
             throw ApiException::idempotencyConflict();
         }
-        [$order, $step, $replayed] = $this->purchases->place($buyer, $idempotencyKey, 'gift', function () use ($productId, $postId): array {
+        [$order, $step, $replayed] = $this->purchases->place($buyer, $idempotencyKey, 'gift', function () use ($buyer, $productId, $postId): array {
             $product = DB::table('products')->where('id', $productId)->lockForUpdate()->first();
             if ($product === null || $product->listing_status !== 'active' || (int) $product->stock < 1) {
                 throw ApiException::outOfStock();
@@ -48,6 +57,7 @@ final class HabitScaleService
             if (DB::update('UPDATE products SET stock = stock - 1 WHERE id = ? AND stock >= 1', [$productId]) !== 1) {
                 throw ApiException::outOfStock();
             }
+            $charge = LandedCost::charge($product, $buyer->country_code, (int) $product->price_minor, 1);
 
             return [
                 'product_id' => $productId,
@@ -55,7 +65,7 @@ final class HabitScaleService
                 'quantity' => 1,
                 'unit_price_minor' => (int) $product->price_minor,
                 'discount_bps' => 0,
-                'total_minor' => (int) $product->price_minor,
+                'total_minor' => $charge['total_minor'],
                 'currency' => $product->currency,
             ];
         }, function (object $order) use ($buyer, $productId, $postId): void {
@@ -97,13 +107,11 @@ final class HabitScaleService
                 'price' => $this->money((int) $product->price_minor, (string) $product->currency),
             ],
         ];
-        if ((string) $gift->claimed_by === $viewer->id) {
-            $payload['address'] = [
-                'line' => $gift->address_line,
-                'locality' => $gift->locality,
-                'postal_code' => $gift->postal_code,
-                'country' => $gift->country,
-            ];
+        if ((string) $gift->claimed_by === (string) $viewer->id) {
+            $address = $this->openAddress($gift);
+            if ($address !== null) {
+                $payload['address'] = $address;
+            }
         }
 
         return $payload;
@@ -114,17 +122,24 @@ final class HabitScaleService
     {
         return DB::transaction(function () use ($recipient, $token, $address): array {
             $gift = DB::table('gifts')->where('token', $token)->lockForUpdate()->first();
-            if ($gift === null || $gift->status !== 'paid' || (string) $gift->buyer_id === $recipient->id || now()->greaterThan($gift->expires_at)) {
+            if ($gift === null || (string) $gift->buyer_id === (string) $recipient->id || now()->greaterThan($gift->expires_at)) {
+                throw ApiException::giftClosed();
+            }
+            if ($gift->status === 'claimed' && (string) $gift->claimed_by === (string) $recipient->id) {
+                return $this->showGift($recipient, $token);
+            }
+            if ($gift->status !== 'paid') {
                 throw ApiException::giftClosed();
             }
             DB::table('gifts')->where('id', $gift->id)->update([
                 'status' => 'claimed',
                 'claimed_by' => $recipient->id,
                 'claimed_at' => now(),
-                'address_line' => $address['line'],
-                'locality' => $address['locality'],
-                'postal_code' => $address['postal_code'],
-                'country' => strtoupper($address['country']),
+                'address_line' => null,
+                'locality' => null,
+                'postal_code' => null,
+                'country' => null,
+                'address_ciphertext' => $this->sealAddress($address),
             ]);
 
             return $this->showGift($recipient, $token);
@@ -419,49 +434,80 @@ final class HabitScaleService
     public function liveAuction(): array
     {
         $live = DB::table('auctions')->where('ends_at', '>', now())->orderBy('ends_at')->first();
-        if ($live === null) {
-            $product = DB::table('products')->orderBy('title')->first();
-            if ($product === null) {
-                return ['auction' => null];
-            }
-            $start = intdiv((int) $product->price_minor, 2);
-            $id = (string) Str::uuid7();
-            DB::table('auctions')->insert([
-                'id' => $id,
-                'product_id' => $product->id,
-                'start_minor' => $start,
-                'current_minor' => $start,
-                'ends_at' => now()->addMinutes(10),
-                'created_at' => now(),
-            ]);
-            $live = DB::table('auctions')->where('id', $id)->first();
-        }
 
-        return ['auction' => $this->auctionShape($live)];
+        return ['auction' => $live === null ? null : $this->auctionShape($live)];
     }
 
-    /** @return array<string, mixed> */
+    /**
+     * A bid leads only after the saved card is authorized for that amount. The previous leader's hold
+     * is cancelled. Losing the row lock cancels the new hold instead of charging a bid that did not win.
+     *
+     * @return array<string, mixed>
+     */
     public function bid(User $user, string $auctionId, int $amount): array
     {
-        return DB::transaction(function () use ($user, $auctionId, $amount): array {
-            $auction = DB::table('auctions')->where('id', $auctionId)->lockForUpdate()->first();
-            if ($auction === null || now()->greaterThan($auction->ends_at) || $amount <= (int) $auction->current_minor) {
-                throw ApiException::bidTooLow();
+        if (! Str::isUuid($auctionId)) {
+            throw ApiException::bidTooLow();
+        }
+        $preview = DB::table('auctions')->where('id', $auctionId)->first();
+        if ($preview === null || now()->greaterThan($preview->ends_at) || $amount <= (int) $preview->current_minor) {
+            throw ApiException::bidTooLow();
+        }
+        $product = DB::table('products')->where('id', $preview->product_id)->first();
+        if ($product === null) {
+            throw ApiException::bidTooLow();
+        }
+        $method = $this->cards->defaultMethodId($user);
+        $customer = $this->cards->customer($user);
+        $intent = $this->gateway->authorize(new AuthorizeRequest(
+            $customer,
+            $method,
+            $amount,
+            (string) $product->currency,
+            'bid-'.Str::lower(Str::random(20)),
+            ['auction_id' => $auctionId, 'bidder_id' => (string) $user->id],
+        ));
+        if (! $intent->isAuthorized() || $intent->id === null) {
+            if ($intent->id !== null) {
+                $this->releaseHold($intent->id);
             }
-            DB::table('auction_bids')->insert([
-                'id' => (string) Str::uuid7(),
-                'auction_id' => $auctionId,
-                'bidder_id' => $user->id,
-                'amount_minor' => $amount,
-                'created_at' => now(),
-            ]);
-            DB::table('auctions')->where('id', $auctionId)->update([
-                'current_minor' => $amount,
-                'leader_id' => $user->id,
-            ]);
+            throw ApiException::cardDeclined();
+        }
+        $intentId = $intent->id;
 
-            return $this->auctionShape(DB::table('auctions')->where('id', $auctionId)->first());
-        });
+        try {
+            return DB::transaction(function () use ($user, $auctionId, $amount, $intentId): array {
+                $auction = DB::table('auctions')->where('id', $auctionId)->lockForUpdate()->first();
+                if ($auction === null || now()->greaterThan($auction->ends_at) || $amount <= (int) $auction->current_minor) {
+                    $this->releaseHold($intentId);
+                    throw ApiException::bidTooLow();
+                }
+                $previous = is_string($auction->leader_payment_intent_id) ? $auction->leader_payment_intent_id : null;
+                DB::table('auction_bids')->insert([
+                    'id' => (string) Str::uuid7(),
+                    'auction_id' => $auctionId,
+                    'bidder_id' => $user->id,
+                    'amount_minor' => $amount,
+                    'payment_intent_id' => $intentId,
+                    'created_at' => now(),
+                ]);
+                DB::table('auctions')->where('id', $auctionId)->update([
+                    'current_minor' => $amount,
+                    'leader_id' => $user->id,
+                    'leader_payment_intent_id' => $intentId,
+                ]);
+                if ($previous !== null && $previous !== '' && $previous !== $intentId) {
+                    $this->releaseHold($previous);
+                }
+
+                return $this->auctionShape(DB::table('auctions')->where('id', $auctionId)->first());
+            });
+        } catch (ApiException $refused) {
+            throw $refused;
+        } catch (Throwable $failed) {
+            $this->releaseHold($intentId);
+            throw $failed;
+        }
     }
 
     /** @return array<string, mixed> */
@@ -624,6 +670,58 @@ final class HabitScaleService
             'leader' => $leader,
             'ends_at' => (string) $auction->ends_at,
         ];
+    }
+
+    /** @param  array{line: string, locality: string, postal_code: string, country: string}  $address */
+    private function sealAddress(array $address): string
+    {
+        return Crypt::encryptString(json_encode([
+            'line' => $address['line'],
+            'locality' => $address['locality'],
+            'postal_code' => $address['postal_code'],
+            'country' => strtoupper($address['country']),
+        ], JSON_THROW_ON_ERROR));
+    }
+
+    /** @return array{line: string, locality: string, postal_code: string, country: string}|null */
+    private function openAddress(object $gift): ?array
+    {
+        if (is_string($gift->address_ciphertext ?? null) && $gift->address_ciphertext !== '') {
+            try {
+                $decoded = json_decode(Crypt::decryptString($gift->address_ciphertext), true, 8, JSON_THROW_ON_ERROR);
+            } catch (Throwable) {
+                return null;
+            }
+            if (! is_array($decoded)) {
+                return null;
+            }
+
+            return [
+                'line' => (string) ($decoded['line'] ?? ''),
+                'locality' => (string) ($decoded['locality'] ?? ''),
+                'postal_code' => (string) ($decoded['postal_code'] ?? ''),
+                'country' => (string) ($decoded['country'] ?? ''),
+            ];
+        }
+        if ($gift->address_line === null) {
+            return null;
+        }
+
+        return [
+            'line' => (string) $gift->address_line,
+            'locality' => (string) $gift->locality,
+            'postal_code' => (string) $gift->postal_code,
+            'country' => (string) $gift->country,
+        ];
+    }
+
+    private function releaseHold(string $paymentIntentId): void
+    {
+        try {
+            $this->gateway->cancel($paymentIntentId, 'auction-release:'.$paymentIntentId);
+        } catch (Throwable) {
+            // The bid row is the source of truth; a stuck hold is released by the next outbid or expiry.
+        }
     }
 
     /** @return array{amount_minor: int, currency: string, minor_unit: int} */

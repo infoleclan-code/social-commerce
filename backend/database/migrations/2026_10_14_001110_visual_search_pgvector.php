@@ -134,6 +134,18 @@ return new class extends Migration
             return false;
         }
 
-        return DB::selectOne("SELECT 1 AS ok FROM pg_extension WHERE extname = 'vector'") !== null;
+        $installed = DB::selectOne("SELECT extversion FROM pg_extension WHERE extname = 'vector'");
+        if ($installed === null) {
+            return false;
+        }
+        // 0.6 (Ubuntu 24.04) has neither bit_hamming_ops nor the 0.8 HNSW knobs. Treat it as absent
+        // so columns stay double precision[] and search uses an exact scan. Production wants >= 0.8.
+        if (version_compare((string) $installed->extversion, '0.8.0', '<')) {
+            Log::warning('pgvector '.(string) $installed->extversion.' is older than 0.8: visual search will use an exact scan.');
+
+            return false;
+        }
+
+        return true;
     }
 };

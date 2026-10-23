@@ -123,5 +123,7 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('payment-sync', fn (Request $request) => Limit::perMinute(30)->by($key($request))->response($limited));
         // Stripe retries with backoff; this only blunts a flood of forged requests from one address.
         RateLimiter::for('stripe-webhook', fn (Request $request) => Limit::perMinute(600)->by((string) $request->ip())->response($limited));
+        RateLimiter::for('auth', fn (Request $request) => Limit::perMinute(10)->by($key($request))->response($limited));
+        RateLimiter::for('social', fn (Request $request) => Limit::perMinute(30)->by($key($request))->response($limited));
     }
 }

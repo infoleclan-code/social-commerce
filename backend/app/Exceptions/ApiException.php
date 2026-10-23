@@ -256,4 +256,24 @@ final class ApiException extends RuntimeException
     {
         return new self(404, 'PRODUCT_NOT_FOUND', 'This product does not exist.');
     }
+
+    public static function addressNotFound(): self
+    {
+        return new self(404, 'ADDRESS_NOT_FOUND', 'That shipping address does not exist.');
+    }
+
+    public static function cardDeclined(): self
+    {
+        return new self(402, 'CARD_DECLINED', 'The card was not authorized.');
+    }
+
+    public static function authFailed(): self
+    {
+        return new self(422, 'AUTH_FAILED', 'The email or password is wrong.');
+    }
+
+    public static function friendRequestClosed(): self
+    {
+        return new self(409, 'FRIEND_REQUEST_CLOSED', 'That friend request cannot be changed.');
+    }
 }

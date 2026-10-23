@@ -12,6 +12,7 @@ use App\Models\SocialConnection;
 use App\Models\User;
 use App\Services\Feed\FeedCursor;
 use App\Services\Feed\FeedPage;
+use App\Services\Social\SocialGraphService;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
@@ -30,6 +31,7 @@ final readonly class ProfileService
         $user->setAttribute('following_count', $user->followers_count);
         $user->setAttribute('is_self', $user->is($viewer));
         $user->setAttribute('is_friend', ! $user->is_self && $this->isFriend($viewer, $user));
+        $user->setAttribute('connection', app(SocialGraphService::class)->label($viewer, $user));
 
         return $user;
     }

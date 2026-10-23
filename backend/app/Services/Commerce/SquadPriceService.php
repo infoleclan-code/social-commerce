@@ -87,8 +87,7 @@ final class SquadPriceService
      */
     public function settle(string $squadId, ?User $member = null): array
     {
-        if ($member !== null && (! Str::isUuid($squadId)
-            || ! DB::table('squad_members')->where('squad_id', $squadId)->where('user_id', $member->id)->exists())) {
+        if ($member !== null && (! Str::isUuid($squadId) || ! self::callerHasPaidSeat($squadId, $member))) {
             throw ApiException::squadNotFound();
         }
 
@@ -98,7 +97,7 @@ final class SquadPriceService
                 throw ApiException::squadNotFound();
             }
             $product = DB::table('products')->where('id', $squad->product_id)->first();
-            $members = (int) DB::table('squad_members')->where('squad_id', $squadId)->count();
+            $members = self::paidMemberCount($squadId);
             $unlocked = $members >= 2;
             if ($unlocked) {
                 $price = (int) $squad->floor_price_minor;
@@ -130,6 +129,27 @@ final class SquadPriceService
                 'captured' => Currency::money($unlocked ? (int) $squad->floor_price_minor : (int) $product->price_minor, (string) $product->currency),
             ];
         });
+    }
+
+    /** Buyers with a non-cancelled squad order. An unpaid join does not count. */
+    public static function paidMemberCount(string $squadId): int
+    {
+        return (int) DB::table('orders')
+            ->where('squad_id', $squadId)
+            ->where('purpose', 'squad')
+            ->where('status', '<>', 'cancelled')
+            ->distinct()
+            ->count('buyer_id');
+    }
+
+    private static function callerHasPaidSeat(string $squadId, User $member): bool
+    {
+        return DB::table('orders')
+            ->where('squad_id', $squadId)
+            ->where('buyer_id', $member->id)
+            ->where('purpose', 'squad')
+            ->where('status', '<>', 'cancelled')
+            ->exists();
     }
 
     private function reserveUnit(string $productId): object

@@ -47,11 +47,36 @@ final class SyntheticMediaService
         return $this->forPost((string) $post->id);
     }
 
+    /**
+     * @param  list<string>  $postIds
+     * @return array<string, array<string, mixed>>
+     */
+    public function forPosts(array $postIds): array
+    {
+        $grouped = $postIds === []
+            ? collect()
+            : DB::table('synthetic_tracks')->whereIn('post_id', $postIds)->orderBy('language')->get()->groupBy('post_id');
+        $out = [];
+        foreach ($postIds as $postId) {
+            $out[$postId] = $this->shape($grouped->get($postId, collect()));
+        }
+
+        return $out;
+    }
+
     /** @return array<string, mixed> */
     public function forPost(string $postId): array
     {
         $tracks = DB::table('synthetic_tracks')->where('post_id', $postId)->orderBy('language')->get();
 
+        return $this->shape($tracks);
+    }
+
+    /** @param  \Illuminate\Support\Collection<int, object>  $tracks
+     * @return array<string, mixed>
+     */
+    private function shape($tracks): array
+    {
         return [
             'label' => self::LABEL,
             'disclosed' => true,

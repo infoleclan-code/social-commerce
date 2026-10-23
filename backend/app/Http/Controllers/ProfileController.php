@@ -38,6 +38,8 @@ final class ProfileController extends Controller
     {
         $page = $this->profiles->posts($request->user(), $user, $request->cursor(), $request->limit());
 
+        FeedPostResource::warm($request, $page->posts);
+
         return FeedPostResource::collection($page->posts)
             ->additional(['meta' => ['next_cursor' => $page->nextCursor]])
             ->response();

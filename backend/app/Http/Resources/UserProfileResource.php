@@ -31,6 +31,7 @@ final class UserProfileResource extends JsonResource
             'viewer' => [
                 'is_self' => (bool) $user->getAttribute('is_self'),
                 'is_friend' => (bool) $user->getAttribute('is_friend'),
+                'connection' => (string) ($user->getAttribute('connection') ?? 'none'),
             ],
         ];
     }

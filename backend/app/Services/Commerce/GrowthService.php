@@ -382,6 +382,16 @@ final class GrowthService
         DB::table('users')->where('id', $user->id)->update(['paused_at' => now()]);
     }
 
+    public function unpause(User $user): void
+    {
+        $row = DB::table('users')->where('id', $user->id)->first(['deletion_requested_at', 'anonymized_at']);
+        if ($row === null || $row->anonymized_at !== null || $row->deletion_requested_at !== null) {
+            throw ApiException::accountPaused();
+        }
+        DB::table('users')->where('id', $user->id)->update(['paused_at' => null]);
+    }
+
+    /** Records the request and pauses purchases. anonymize_user() runs after 14 days (accounts:anonymize-due). */
     public function requestDeletion(User $user): void
     {
         DB::table('users')->where('id', $user->id)->update(['deletion_requested_at' => now(), 'paused_at' => now()]);
@@ -397,14 +407,28 @@ final class GrowthService
             'status' => 'ready',
             'created_at' => now(),
         ]);
-        $me = DB::table('users')->where('id', $user->id)->first(['id', 'username', 'display_name', 'email']);
+        $me = DB::table('users')->where('id', $user->id)->first(['id', 'username', 'display_name', 'email', 'locale', 'country_code']);
 
         return [
             'export_id' => $id,
-            'user' => ['id' => $me->id, 'username' => $me->username, 'display_name' => $me->display_name],
-            'orders' => DB::table('orders')->where('buyer_id', $user->id)->get(['id', 'product_id', 'total_minor', 'status', 'created_at']),
+            'user' => [
+                'id' => $me->id,
+                'username' => $me->username,
+                'display_name' => $me->display_name,
+                'email' => $me->email,
+                'locale' => $me->locale,
+                'country_code' => $me->country_code,
+            ],
+            'consents' => DB::table('user_consents')->where('user_id', $user->id)->orderBy('created_at')->get(['purpose', 'granted', 'policy_version', 'source', 'created_at']),
+            'devices' => DB::table('user_devices')->where('user_id', $user->id)->orderBy('created_at')->get(['id', 'platform', 'app_version', 'push_enabled', 'last_seen_at', 'revoked_at', 'created_at']),
+            'posts' => DB::table('feed_posts')->where('user_id', $user->id)->get(['id', 'caption', 'audience', 'created_at']),
+            'comments' => DB::table('feed_post_comments')->where('user_id', $user->id)->get(['id', 'post_id', 'body', 'created_at']),
+            'likes' => DB::table('feed_post_likes')->where('user_id', $user->id)->get(['post_id', 'created_at']),
+            'connections' => DB::table('social_connections')
+                ->where(fn ($query) => $query->where('requester_id', $user->id)->orWhere('addressee_id', $user->id))
+                ->get(['requester_id', 'addressee_id', 'status', 'created_at']),
+            'orders' => DB::table('orders')->where('buyer_id', $user->id)->get(['id', 'product_id', 'quantity', 'total_minor', 'currency', 'status', 'created_at']),
             'closet' => DB::table('closet_items')->where('user_id', $user->id)->get(['id', 'product_id', 'status']),
-            'posts' => DB::table('feed_posts')->where('user_id', $user->id)->get(['id', 'caption', 'created_at']),
         ];
     }
 
@@ -445,17 +469,40 @@ final class GrowthService
         $payments->refund($orderId, (int) $order->total_minor - (int) $order->amount_refunded_minor, 'requested_by_customer', restock: true);
     }
 
-    /** @return list<array<string, mixed>> */
-    public function catalog(): array
+    /**
+     * Active listings a buyer may purchase: platform products, or a verified seller's stock.
+     * Keyset by id. The route is authenticated and throttled.
+     *
+     * @return array{data: list<array<string, mixed>>, meta: array{next_cursor: string|null}}
+     */
+    public function catalog(?string $cursor, int $limit = 20): array
     {
-        return DB::table('products')->where('stock', '>', 0)->orderBy('title')->get()->map(fn (object $product): array => [
-            'id' => $product->id,
-            'title' => $product->title,
-            'price_minor' => (int) $product->price_minor,
-            'currency' => $product->currency,
-            'stock' => (int) $product->stock,
-            'checkout_path' => '/reels',
-        ])->all();
+        $limit = max(1, min(50, $limit));
+        $rows = DB::table('products as p')
+            ->leftJoin('sellers as s', 's.user_id', '=', 'p.seller_id')
+            ->where('p.stock', '>', 0)
+            ->where('p.listing_status', 'active')
+            ->where(function ($query): void {
+                $query->whereNull('p.seller_id')->orWhere('s.status', 'verified');
+            })
+            ->when($cursor !== null, fn ($query) => $query->where('p.id', '>', $cursor))
+            ->orderBy('p.id')
+            ->limit($limit + 1)
+            ->get(['p.id', 'p.title', 'p.price_minor', 'p.currency', 'p.stock']);
+        $page = $rows->take($limit)->values();
+        $next = $rows->count() > $limit ? (string) $page->last()->id : null;
+
+        return [
+            'data' => $page->map(fn (object $product): array => [
+                'id' => $product->id,
+                'title' => $product->title,
+                'price_minor' => (int) $product->price_minor,
+                'currency' => $product->currency,
+                'stock' => (int) $product->stock,
+                'checkout_path' => '/reels',
+            ])->all(),
+            'meta' => ['next_cursor' => $next],
+        ];
     }
 
     /** @return array<string, mixed> */

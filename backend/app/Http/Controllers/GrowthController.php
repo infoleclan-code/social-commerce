@@ -8,6 +8,7 @@ use App\Services\Commerce\GrowthService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 final class GrowthController extends Controller
 {
@@ -173,6 +174,13 @@ final class GrowthController extends Controller
         return new JsonResponse(['data' => $this->growth->trust($request->user())]);
     }
 
+    public function unpause(Request $request): JsonResponse
+    {
+        $this->growth->unpause($request->user());
+
+        return new JsonResponse(['data' => $this->growth->trust($request->user())]);
+    }
+
     public function deleteAccount(Request $request): JsonResponse
     {
         $this->growth->requestDeletion($request->user());
@@ -202,9 +210,11 @@ final class GrowthController extends Controller
         return new JsonResponse(['data' => ['age_assured' => true]]);
     }
 
-    public function catalog(): JsonResponse
+    public function catalog(Request $request): JsonResponse
     {
-        return new JsonResponse(['data' => $this->growth->catalog()]);
+        $cursor = $request->query('cursor');
+
+        return new JsonResponse($this->growth->catalog(is_string($cursor) && Str::isUuid($cursor) ? $cursor : null));
     }
 
     public function card(string $kind, string $id): JsonResponse

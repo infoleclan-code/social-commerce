@@ -97,10 +97,22 @@ final class Phase1Controller extends Controller
         $data = $request->validate([
             'product_id' => ['required', 'uuid'],
             'quantity' => ['sometimes', 'integer', 'min:1', 'max:3'],
+            'expected_total_minor' => ['sometimes', 'nullable', 'integer', 'min:0'],
         ]);
-        $result = $this->scan->oneTap($request->user(), $data['product_id'], (int) ($data['quantity'] ?? 1), $this->idempotencyKey($request));
+        $result = $this->scan->oneTap(
+            $request->user(),
+            $data['product_id'],
+            (int) ($data['quantity'] ?? 1),
+            $this->idempotencyKey($request),
+            isset($data['expected_total_minor']) ? (int) $data['expected_total_minor'] : null,
+        );
 
         return new JsonResponse(['data' => $result], $result['replayed'] ? 200 : 201);
+    }
+
+    public function orders(Request $request): JsonResponse
+    {
+        return new JsonResponse(['data' => $this->scan->listOrders($request->user())]);
     }
 
     public function showOrder(Request $request, string $order): JsonResponse

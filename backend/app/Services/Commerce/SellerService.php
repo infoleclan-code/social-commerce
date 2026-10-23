@@ -163,6 +163,34 @@ final class SellerService
         ];
     }
 
+    /** @return array<string, mixed> */
+    public function ship(User $seller, string $orderId, string $carrier, string $tracking): array
+    {
+        if (! Str::isUuid($orderId)) {
+            throw ApiException::orderNotFound();
+        }
+        $order = DB::table('orders as o')
+            ->join('products as p', 'p.id', '=', 'o.product_id')
+            ->where('o.id', $orderId)
+            ->where('p.seller_id', $seller->id)
+            ->first(['o.id', 'o.status']);
+        if ($order === null || ! in_array($order->status, ['processing', 'paid'], true)) {
+            throw ApiException::orderNotFound();
+        }
+        DB::table('orders')->where('id', $orderId)->update([
+            'carrier' => $carrier,
+            'tracking_number' => $tracking,
+            'shipped_at' => now(),
+        ]);
+
+        return [
+            'id' => $orderId,
+            'fulfillment' => 'shipped',
+            'carrier' => $carrier,
+            'tracking_number' => $tracking,
+        ];
+    }
+
     private function requireSeller(User $user): object
     {
         return DB::table('sellers')->where('user_id', $user->id)->first() ?? throw ApiException::profileNotFound();
