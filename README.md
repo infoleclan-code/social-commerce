@@ -1,8 +1,33 @@
 # Social commerce platform
 
-Laravel 13 + PostgreSQL backend, Expo app and Cursor rules for a social e-commerce + rewards app:
-universal cart, affiliate cashback, group drops, multi-tier attribution, digital closet, P2P resale
-(release 1), and a Reels-style feed, AI visual search and 1-Tap checkout (release 2).
+Laravel 12.69 (`laravel/framework` ^12) + PostgreSQL backend, Expo app and Cursor rules for a social
+e-commerce + rewards app: universal cart, affiliate cashback, group drops, multi-tier attribution,
+digital closet, P2P resale (release 1), and a Reels-style feed, AI visual search and 1-Tap checkout
+(release 2). Payments use `stripe/stripe-php` ^22. Schema changes after the core SQL live in
+`backend/database/migrations/2026_10_13_*`, `2026_10_14_*`, and `2026_10_23_120000_secure_gifts_and_auctions.php`.
+
+## Audit fixes (2026-10-23)
+
+Money and visibility:
+
+- Checkout, 1-Tap, and gifts charge the landed total: discounted merchandise, shipping once (plus 800 minor units when the parcel crosses a border), duty on discounted merchandise when it crosses a border, and VAT on merchandise plus shipping for an EU destination. The buyer’s saved address country wins over the profile country when `address_id` is sent. `expected_total_minor` is optional; a mismatch returns `409 PRICE_CHANGED`. Squad card holds stay merchandise-only.
+- Unpaid `POST /squads/{id}/join` still reserves a seat and still discounts a later checkout by member count. `SquadPriceService::settle` unlocks capture only when at least two distinct buyers have non-cancelled `purpose = squad` orders, and only for a caller who has paid.
+- `GET /auctions/live` is read-only. A bid authorizes the saved card first and stores the PaymentIntent; the previous leader’s hold is cancelled. Auction wins are holds, not a new order purpose.
+- `POST /rewards/loot-box` is idempotent. The client keeps one Idempotency-Key until the call succeeds.
+- `GET /api/v1/catalog/feed` requires a Sanctum token and lists only active products from verified sellers (or unsold catalog rows). Store pages use `FeedPost::visibleTo`, so friends-only posts stay hidden.
+- Gift street addresses are Laravel-encrypted in `address_ciphertext`. Claiming the same gift again returns it to the same person.
+- pgvector below 0.8 (this image ships 0.6.0, which has no `bit_hamming_ops`) stores embeddings as `double precision[]` and scans them exactly. Production should install pgvector ≥ 0.8 for HNSW.
+
+Accounts and commerce:
+
+- `POST /api/v1/auth/register` and `/auth/login` (10/minute) issue a Sanctum token that expires after `SANCTUM_EXPIRATION` minutes (default 30 days). `POST /api/v1/auth/logout` deletes the current token and can revoke one device. Registration leaves `social_feed_enabled` off. Bad credentials are `422 AUTH_FAILED`.
+- Friendship is mutual. `followers` and `following` are both the accepted-friend count. `viewer.connection` is `self`, `none`, `pending_out`, `pending_in`, `friends`, or `blocked`. Declined requests are shown as `none` so a new request can be sent.
+- Cart lines, encrypted shipping addresses, `POST /cart/checkout` (one Idempotency-Key, a derived key per line), `GET /orders` with fulfillment and tracking, and `POST /orders/{id}/withdraw` for a return. Sellers mark `POST /seller/orders/{id}/ship` only for their own processing or paid orders.
+- Account deletion sets `deletion_requested_at` and pauses the account. After 14 days, `accounts:anonymize-due` calls `anonymize_user` and deletes Sanctum tokens. `POST /trust/unpause` clears a pause that is not a deletion or an anonymized account. Export includes profile, consents, devices without push tokens, posts, comments, likes, connections, orders, and closet.
+- `POST /devices` registers an Expo push token. The mobile app does not call it yet: `expo-notifications` is not a dependency.
+- Seller onboarding sends the legal name, country, and registration number the person types. The app no longer posts a sample business.
+
+The Drops, Closet, and Wallet tabs redirect away from fixture money. Demo sheets that are not on a tab (product sheet, dupe finder) still contain sample copy.
 
 ## Hardening pass (2026-10-14)
 
@@ -68,7 +93,7 @@ backend/
 docs/erd.md               Mermaid ERD + money-flow diagram
 ```
 
-## Install into a Laravel 13 app
+## Install into a Laravel 12 app
 
 1. Copy `backend/app`, `backend/config/rewards.php`, `backend/database` and `backend/tests` into the app;
    merge `AppServiceProvider` into yours. Copy `.cursor/` to the repository root.
@@ -116,7 +141,7 @@ docs/erd.md               Mermaid ERD + money-flow diagram
 - Status changes follow `status_transitions` for drops, slots, conversions, orders, items, closet,
   listings, payouts and friendships.
 
-Verified on PostgreSQL 16 with Laravel 13.34: 92 SQL invariant checks, 9 concurrency checks with real
+The lockfile is Laravel 12. Release 1 was verified on PostgreSQL 16: 92 SQL invariant checks, 9 concurrency checks with real
 parallel sessions, 166 end-to-end Eloquent checks (all 155 relationships run lazily and eagerly, all 44
 enum/CHECK pairs, migration down/up), and the 22 shipped tests.
 

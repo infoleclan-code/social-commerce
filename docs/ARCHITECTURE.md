@@ -31,7 +31,7 @@ button that completes a purchase in one tap.
 
 | Principle | What it means in the code |
 |---|---|
-| The server owns money and stock | The app never sends a price, amount, currency, address or card. `POST /checkout/one-tap` takes a product, an optional size and a quantity; everything else comes from the catalog and the buyer's saved settings. |
+| The server owns money and stock | `POST /checkout/one-tap` takes a product, an optional size, a quantity, and an optional `expected_total_minor` equal to the total the card showed. The server recomputes the landed total and returns `409 PRICE_CHANGED` when they differ. Cards stay in Stripe. |
 | Every purchase is idempotent | One `Idempotency-Key` per tap. A retried or doubled tap returns the order the first one created. The key is bound to its purchase: the same key with a different product, size or quantity is refused (`422 IDEMPOTENCY_KEY_REUSED`). Every Stripe write that can move money carries an idempotency key derived from our own ids. |
 | A tap is reversible for a short time | The tap only authorizes the card. During the undo window (default 120 s) the buyer can cancel for free: the authorization is voided, nothing is charged, the stock goes back. A scheduled job captures after the window. |
 | Optimistic only where it is harmless | Likes are instant and corrected by the server's count. Purchases, comments and shares wait for the server. |
@@ -52,7 +52,7 @@ flowchart LR
     SDK["Stripe SDK<br/>3-D Secure, PaymentSheet"]
   end
 
-  subgraph API["Laravel 13 API (PHP 8.3+)"]
+  subgraph API["Laravel 12 API (PHP 8.3+)"]
     C["Controllers + FormRequests<br/>/api/v1, Sanctum"]
     F["FeedService<br/>CommentService"]
     V["VisualSearchService<br/>ProductMatcher"]
@@ -493,6 +493,8 @@ Backend (`.env`):
 | `FEED_MEDIA_DISK`, `FEED_CDN_URL` | public, empty | Media disk and its CDN host |
 | `FEED_VIDEO_PROCESSOR`, `FFMPEG_BINARY`, `FFPROBE_BINARY` | ffmpeg | `passthrough` only for local development |
 | `SHARE_BASE_URL` | `APP_URL` | Host of `/s/{token}` share links |
+| `SANCTUM_EXPIRATION` | 43200 | Minutes until a newly issued token expires (30 days) |
+| `CORS_ALLOWED_ORIGINS` | local Expo web origins | Comma-separated browser origins. Never `*` |
 
 Mobile (`.env`, `EXPO_PUBLIC_*` values are compiled into the app and are not secrets):
 
@@ -503,12 +505,12 @@ Mobile (`.env`, `EXPO_PUBLIC_*` values are compiled into the app and are not sec
 | `EXPO_PUBLIC_STRIPE_MERCHANT_IDENTIFIER` | Apple merchant id (also in the Stripe plugin in `app.json`) |
 | `EXPO_PUBLIC_STRIPE_MERCHANT_COUNTRY` | Two-letter country for Apple Pay / Google Pay |
 | `EXPO_PUBLIC_MERCHANT_DISPLAY_NAME` | Name on the payment sheet |
-| `EXPO_PUBLIC_DEV_AUTH_TOKEN` | Development builds only, until sign-in exists; ignored in release builds |
+| `EXPO_PUBLIC_DEV_AUTH_TOKEN` | Development builds only. Used when no token is stored. Ignored once the person signs in. Never set it in an EAS production profile. |
 
 ## 12. Verification
 
-- **Backend**: 64 PHPUnit tests, 2,498 assertions, on PostgreSQL 16 + pgvector with Laravel 13.35 and
-  stripe-php 21.3: 1-Tap (authorize, undo, capture, idempotent replay and key reuse, 3-D Secure, decline,
+- **Backend** (release-2 run): 64 PHPUnit tests, 2,498 assertions, on PostgreSQL 16 + pgvector. The app
+  now runs Laravel 12 and stripe-php 22; re-run `php vendor/bin/phpunit` for the current count. That run covered 1-Tap (authorize, undo, capture, idempotent replay and key reuse, 3-D Secure, decline,
   last unit, preconditions, affiliate redirect, provider outage, reconciler, immediate capture), saved
   cards (verified confirm, foreign setups refused, newest setup wins), webhooks (signatures, duplicates,
   out-of-order events, refunds, minimized storage), feed (visibility, blocks, likes, comments, shares,
@@ -531,10 +533,11 @@ Mobile (`.env`, `EXPO_PUBLIC_*` values are compiled into the app and are not sec
 
 ## 13. Known gaps and next steps
 
-1. **Sign-in.** The API expects Sanctum tokens; issuing them (email/OTP/Apple/Google sign-in) is not part
-   of this release.
-2. **Shipping and tax.** The 1-Tap total is item price × quantity. Add shipping rates per vendor and tax
-   calculation (e.g. Stripe Tax) before charging, and show the all-in total on the card.
+1. **Sign-in.** Email registration, sign-in, and logout are live (`/auth/register`, `/auth/login`,
+   `/auth/logout`) with a 30-day Sanctum expiry. OTP, Apple, and Google sign-in are not.
+2. **Shipping and tax.** Checkout, 1-Tap, and gifts add the catalog shipping amount, a flat cross-border
+   surcharge, duty basis points, and EU VAT basis points. This is not a per-carrier rate card and it is
+   not Stripe Tax.
 3. **Fee reversal on refunds.** Refunds update the order and closet; the ledger reversal of the platform
    fee (`application_fee.refunded`) is still to be posted.
 4. **Processing fees** are not yet recorded in the ledger.
