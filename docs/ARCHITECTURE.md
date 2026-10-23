@@ -447,7 +447,7 @@ What the code already does, and the next step at each pressure point:
 | Vector search | pgvector HNSW in the main database | Tens of millions of vectors; filtered queries | pgvector ≥ 0.8 iterative scans for filters, partition by top-level category, a read replica for search; beyond that a dedicated vector engine (Qdrant, Milvus, OpenSearch k-NN). |
 | Model inference | One HTTP call per uncached scan | Peak scan traffic | GPU service with dynamic batching; the hash cache already absorbs repeated images (screenshots of viral posts). |
 | Database | One primary | Read-heavy traffic | PgBouncer, read replicas for feed and history reads, time partitioning for `visual_scans`, `feed_post_likes`, `affiliate_clicks`. |
-| Queues | `payments`, `webhooks`, `indexing`, `default` | Bursts | Horizon with per-queue autoscaling; payments isolated from indexing and media. |
+| Queues | Database queue. `deploy/crontab` runs `schedule:run` every minute; `deploy/supervisor.conf` runs `schedule:work` and `queue:work`. Horizon and Reverb are not installed: nothing broadcasts. | Bursts | Horizon with per-queue autoscaling; payments isolated from indexing and media. |
 | Abuse | Per-user rate limits on every write and on scans | Distributed abuse | WAF and device attestation (App Attest / Play Integrity) on the purchase and scan endpoints. |
 
 Targets to monitor (service-level objectives, not measurements): feed page p95 < 150 ms server time,
@@ -538,8 +538,10 @@ Mobile (`.env`, `EXPO_PUBLIC_*` values are compiled into the app and are not sec
 2. **Shipping and tax.** Checkout, 1-Tap, and gifts add the catalog shipping amount, a flat cross-border
    surcharge, duty basis points, and EU VAT basis points. This is not a per-carrier rate card and it is
    not Stripe Tax.
-3. **Fee reversal on refunds.** Refunds update the order and closet; the ledger reversal of the platform
-   fee (`application_fee.refunded`) is still to be posted.
+3. **Fee reversal on refunds.** Capture posts `platform_fee` (a share of merchandise, `COMMERCE_PLATFORM_FEE_BPS`,
+   default 10%) and a refund posts `platform_fee_reverse` for the refunded share. Stripe Connect
+   `application_fee_amount` is not set on the PaymentIntent: that parameter requires a destination charge,
+   which this checkout does not create.
 4. **Processing fees** are not yet recorded in the ledger.
 5. **HLS and async media** (see scaling).
 6. **Counter buffering for viral posts** (see scaling).
