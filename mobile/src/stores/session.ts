@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 
+import { registerPushDevice } from '@/features/auth/register-push';
 import { clearAuthToken, readAuthToken, writeAuthToken } from '@/lib/auth-token';
 
 type Session = {
@@ -20,6 +21,7 @@ export const useSession = create<Session>((set) => ({
   signIn: async (token) => {
     await writeAuthToken(token);
     set({ ready: true, signedIn: true });
+    void registerPushDevice();
   },
   signOut: async () => {
     await clearAuthToken();

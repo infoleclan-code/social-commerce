@@ -653,6 +653,8 @@ const catalog = {
   'profile.logout': 'Log out',
   'profile.orders': 'Orders',
   'profile.cart': 'Cart',
+  'profile.follow': 'Follow',
+  'profile.unfollow': 'Unfollow',
   'profile.friendRequest': 'Add friend',
   'profile.friendPending': 'Request sent',
   'profile.friendAccept': 'Accept',

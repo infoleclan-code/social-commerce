@@ -1,4 +1,4 @@
-import 'react-native-gesture-handler';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import '../global.css';
 
 import { QueryClientProvider } from '@tanstack/react-query';
@@ -10,10 +10,10 @@ import * as Linking from 'expo-linking';
 import { colorScheme } from 'nativewind';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { BackHandler, Platform } from 'react-native';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { createQueryClient } from '@/api/query-client';
 import { AuthScreen } from '@/features/auth/auth-screen';
+import { registerPushDevice } from '@/features/auth/register-push';
 import { useSession } from '@/stores/session';
 import { DupeSearchOverlay } from '@/features/feed/dupe-search-overlay';
 import { ProductSheet } from '@/features/feed/product-sheet';
@@ -51,7 +51,11 @@ function SessionGate({ children }: { children: ReactNode }) {
   const ready = useSession((state) => state.ready);
   const signedIn = useSession((state) => state.signedIn);
   useEffect(() => {
-    void useSession.getState().refresh();
+    void useSession.getState().refresh().then(() => {
+      if (useSession.getState().signedIn) {
+        void registerPushDevice();
+      }
+    });
   }, []);
   if (!ready) {
     return null;

@@ -1,7 +1,5 @@
 import { create } from 'zustand';
 
-import { feedProducts, variantsFor } from '@/features/feed/fixtures';
-
 type Phase = 'idle' | 'scanning' | 'results';
 
 type DupeScanState = {
@@ -39,12 +37,10 @@ export const useDupeScanStore = create<DupeScanState>((set, get) => ({
   budgetMinor: null,
   startScan: (productId) => {
     clearScanTimer();
-    const product = feedProducts.find((item) => item.id === productId);
-    const variants = product ? variantsFor(product.slotId) : ['M'];
     set({
       phase: 'scanning',
       productId,
-      variant: variants[0] ?? 'M',
+      variant: 'M',
       colorMatch: false,
       material: 'all',
       budgetMinor: null,

@@ -440,6 +440,18 @@ export function blockUser(userId: string): Promise<void> {
   return api(`/users/${encodeURIComponent(userId)}/block`, json('POST')).then(() => undefined);
 }
 
+export function followUser(userId: string): Promise<{ following: boolean }> {
+  return api<Envelope<{ following: boolean }>>(`/users/${encodeURIComponent(userId)}/follow`, json('POST')).then((body) => body.data);
+}
+
+export function unfollowUser(userId: string): Promise<{ following: boolean }> {
+  return api<Envelope<{ following: boolean }>>(`/users/${encodeURIComponent(userId)}/follow`, { method: 'DELETE' }).then((body) => body.data);
+}
+
+export function registerDevice(body: { platform: 'ios' | 'android' | 'web'; expo_push_token: string }): Promise<{ id: string }> {
+  return api<Envelope<{ id: string }>>('/devices', json('POST', body)).then((response) => response.data);
+}
+
 export function declineFriend(userId: string): Promise<{ connection: string }> {
   return api<Envelope<{ connection: string }>>(`/users/${encodeURIComponent(userId)}/friend-decline`, json('POST')).then((body) => body.data);
 }

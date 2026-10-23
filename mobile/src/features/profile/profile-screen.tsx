@@ -9,7 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ApiError } from '@/api/client';
 import type { FeedPost, StoreProduct, UserProfile } from '@/api/contracts';
 import { queryKeys } from '@/api/keys';
-import { acceptFriend, blockUser, declineFriend, fetchCloset, fetchLedger, fetchProfile, fetchRewards, fetchRitual, fetchStore, fetchUserPosts, logoutAccount, requestFriend, checkIn, completeMission, listClosetItem, openLootBox, spinPrize, type ClosetRow, type Ritual } from '@/api/social-commerce';
+import { acceptFriend, blockUser, declineFriend, fetchCloset, fetchLedger, fetchProfile, fetchRewards, fetchRitual, fetchStore, fetchUserPosts, followUser, logoutAccount, requestFriend, unfollowUser, checkIn, completeMission, listClosetItem, openLootBox, spinPrize, type ClosetRow, type Ritual } from '@/api/social-commerce';
 import { useSession } from '@/stores/session';
 import { EmptyHero } from '@/components/ui/empty-hero';
 import { PressableScale } from '@/components/ui/pressable-scale';
@@ -117,6 +117,23 @@ export function ProfileScreen({ userId }: Props) {
     }
   }
 
+  async function changeFollow(already: boolean) {
+    if (!profile.data) {
+      return;
+    }
+    setFriendNote(null);
+    try {
+      if (already) {
+        await unfollowUser(profile.data.id);
+      } else {
+        await followUser(profile.data.id);
+      }
+      await profile.refetch();
+    } catch (error) {
+      setFriendNote(error instanceof ApiError ? error.message : t('profile.errorTitle'));
+    }
+  }
+
   const openReel = useCallback(
     (post: FeedPost) => {
       const author = profile.data?.id;
@@ -190,6 +207,7 @@ export function ProfileScreen({ userId }: Props) {
       onCart={() => router.push('/cart')}
       onLogout={() => void leave()}
       onFriend={(action) => void changeFriend(action)}
+      onFollow={(already) => void changeFollow(already)}
       friendNote={friendNote}
       tab={tab}
       xp={rewards.data?.xp ?? null}
@@ -308,6 +326,7 @@ function ProfileHeader({
   onCart,
   onLogout,
   onFriend,
+  onFollow,
   friendNote,
 }: {
   person: UserProfile;
@@ -332,6 +351,7 @@ function ProfileHeader({
   onCart: () => void;
   onLogout: () => void;
   onFriend: (action: 'request' | 'accept' | 'decline' | 'block') => void;
+  onFollow: (alreadyFollowing: boolean) => void;
   friendNote: string | null;
 }) {
   const initial = (person.display_name ?? person.username).slice(0, 1).toUpperCase();
@@ -375,7 +395,7 @@ function ProfileHeader({
         {person.viewer.is_friend ? (
           <Text style={{ color: palette.goldSoft, fontSize: 13, fontWeight: '600', marginTop: 4 }}>{t('profile.friend')}</Text>
         ) : null}
-        <FriendActions friendNote={friendNote} onFriend={onFriend} person={person} />
+        <FriendActions friendNote={friendNote} onFollow={onFollow} onFriend={onFriend} person={person} />
         {person.viewer.is_self ? (
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
             <Pressable accessibilityRole="button" onPress={onOrders} style={pill}>
@@ -440,10 +460,12 @@ function ProfileHeader({
 function FriendActions({
   person,
   onFriend,
+  onFollow,
   friendNote,
 }: {
   person: UserProfile;
   onFriend: (action: 'request' | 'accept' | 'decline' | 'block') => void;
+  onFollow: (alreadyFollowing: boolean) => void;
   friendNote: string | null;
 }) {
   const connection = person.viewer.connection ?? (person.viewer.is_self ? 'self' : person.viewer.is_friend ? 'friends' : 'none');
@@ -471,9 +493,14 @@ function FriendActions({
       {connection === 'blocked' ? (
         <Text style={{ color: palette.muted }}>{t('profile.blocked')}</Text>
       ) : (
-        <Pressable accessibilityRole="button" onPress={() => onFriend('block')} style={pill}>
-          <Text style={pillText}>{t('profile.block')}</Text>
-        </Pressable>
+        <>
+          <Pressable accessibilityRole="button" onPress={() => onFollow(person.viewer.following === true)} style={pill}>
+            <Text style={pillText}>{person.viewer.following ? t('profile.unfollow') : t('profile.follow')}</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" onPress={() => onFriend('block')} style={pill}>
+            <Text style={pillText}>{t('profile.block')}</Text>
+          </Pressable>
+        </>
       )}
       {friendNote ? <Text style={{ color: palette.goldSoft }}>{friendNote}</Text> : null}
     </View>

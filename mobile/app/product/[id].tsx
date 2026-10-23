@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
@@ -18,27 +19,20 @@ export default function ProductScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const productId = typeof id === 'string' ? id : '';
-  const [thread, setThread] = useState<Thread | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const reviews = useQuery({
+    queryKey: ['product-reviews', productId],
+    queryFn: ({ signal }) => api<{ data: Thread }>(`/products/${encodeURIComponent(productId)}/reviews`, { signal }),
+    enabled: productId !== '',
+  });
   const [review, setReview] = useState('');
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState('');
+  const thread = reviews.data?.data ?? null;
+  const error = reviews.isError ? (reviews.error instanceof ApiError ? reviews.error.message : t('reviews.error')) : null;
 
-  function load() {
-    if (productId === '') {
-      return;
-    }
-    setError(null);
-    void api<{ data: Thread }>(`/products/${encodeURIComponent(productId)}/reviews`)
-      .then((body) => setThread(body.data))
-      .catch((caught: unknown) => {
-        setError(caught instanceof ApiError ? caught.message : t('reviews.error'));
-      });
+  function reload() {
+    void reviews.refetch();
   }
-
-  useEffect(() => {
-    load();
-  }, [productId]);
 
   return (
     <View style={{ flex: 1, backgroundColor: palette.ink, padding: 20, paddingTop: 64, gap: 12 }}>
@@ -46,10 +40,11 @@ export default function ProductScreen() {
         <Text style={{ color: palette.ivory }}>{t('shop.close')}</Text>
       </Pressable>
       <Text style={{ color: palette.ivory, fontSize: 24, fontWeight: '700' }}>{t('reviews.title')}</Text>
+      {reviews.isPending && productId !== '' ? <Text style={{ color: palette.muted }}>{t('reviews.title')}</Text> : null}
       {error ? (
         <View style={{ gap: 8 }}>
           <Text style={{ color: palette.goldSoft }}>{error}</Text>
-          <Pressable accessibilityLabel={t('reviews.retry')} accessibilityRole="button" onPress={load} style={button}>
+          <Pressable accessibilityLabel={t('reviews.retry')} accessibilityRole="button" onPress={reload} style={button}>
             <Text style={label}>{t('reviews.retry')}</Text>
           </Pressable>
         </View>
@@ -70,7 +65,7 @@ export default function ProductScreen() {
             onPress={() => {
               void api(`/products/${encodeURIComponent(productId)}/reviews`, json('POST', { order_id: thread.can_review_order_id, body: review })).then(() => {
                 setReview('');
-                load();
+                reload();
               });
             }}
             style={button}
@@ -94,7 +89,7 @@ export default function ProductScreen() {
                 onPress={() => {
                   void api(`/questions/${encodeURIComponent(item.id)}/answer`, json('POST', { body: answer })).then(() => {
                     setAnswer('');
-                    load();
+                    reload();
                   });
                 }}
                 style={button}
@@ -112,7 +107,7 @@ export default function ProductScreen() {
         onPress={() => {
           void api(`/products/${encodeURIComponent(productId)}/questions`, json('POST', { body: question })).then(() => {
             setQuestion('');
-            load();
+            reload();
           });
         }}
         style={button}

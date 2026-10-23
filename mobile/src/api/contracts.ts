@@ -29,7 +29,7 @@ export type UserProfile = {
   avatar_url: string | null;
   bio: string | null;
   counts: { posts: number; followers: number; following: number };
-  viewer: { is_self: boolean; is_friend: boolean; connection?: 'self' | 'none' | 'pending_out' | 'pending_in' | 'friends' | 'blocked' };
+  viewer: { is_self: boolean; is_friend: boolean; following?: boolean; connection?: 'self' | 'none' | 'pending_out' | 'pending_in' | 'friends' | 'blocked' };
 };
 
 // ------------------------------------------------------------------------------------------ products
