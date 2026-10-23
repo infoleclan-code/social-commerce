@@ -9,7 +9,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ApiError } from '@/api/client';
 import type { FeedPost, StoreProduct, UserProfile } from '@/api/contracts';
 import { queryKeys } from '@/api/keys';
-import { fetchCloset, fetchLedger, fetchProfile, fetchRewards, fetchRitual, fetchStore, fetchUserPosts, checkIn, completeMission, listClosetItem, openLootBox, spinPrize, type ClosetRow, type Ritual } from '@/api/social-commerce';
+import { acceptFriend, blockUser, declineFriend, fetchCloset, fetchLedger, fetchProfile, fetchRewards, fetchRitual, fetchStore, fetchUserPosts, logoutAccount, requestFriend, checkIn, completeMission, listClosetItem, openLootBox, spinPrize, type ClosetRow, type Ritual } from '@/api/social-commerce';
+import { useSession } from '@/stores/session';
 import { EmptyHero } from '@/components/ui/empty-hero';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { feedPosts } from '@/features/reels/use-reels';
@@ -83,6 +84,38 @@ export function ProfileScreen({ userId }: Props) {
     },
   });
   const reels = feedPosts(posts.data);
+  const signOut = useSession((state) => state.signOut);
+  const [friendNote, setFriendNote] = useState<string | null>(null);
+
+  async function leave() {
+    try {
+      await logoutAccount();
+    } catch {
+      // The device still drops its token when the server is unreachable.
+    }
+    await signOut();
+  }
+
+  async function changeFriend(action: 'request' | 'accept' | 'decline' | 'block') {
+    if (!profile.data) {
+      return;
+    }
+    setFriendNote(null);
+    try {
+      if (action === 'request') {
+        await requestFriend(profile.data.id);
+      } else if (action === 'accept') {
+        await acceptFriend(profile.data.id);
+      } else if (action === 'decline') {
+        await declineFriend(profile.data.id);
+      } else {
+        await blockUser(profile.data.id);
+      }
+      await profile.refetch();
+    } catch (error) {
+      setFriendNote(error instanceof ApiError ? error.message : t('profile.errorTitle'));
+    }
+  }
 
   const openReel = useCallback(
     (post: FeedPost) => {
@@ -153,6 +186,11 @@ export function ProfileScreen({ userId }: Props) {
       }}
       onPlay={() => router.push('/play')}
       onGrow={() => router.push('/grow')}
+      onOrders={() => router.push('/orders')}
+      onCart={() => router.push('/cart')}
+      onLogout={() => void leave()}
+      onFriend={(action) => void changeFriend(action)}
+      friendNote={friendNote}
       tab={tab}
       xp={rewards.data?.xp ?? null}
     />
@@ -266,6 +304,11 @@ function ProfileHeader({
   onSpin,
   onPlay,
   onGrow,
+  onOrders,
+  onCart,
+  onLogout,
+  onFriend,
+  friendNote,
 }: {
   person: UserProfile;
   insetsTop: number;
@@ -285,6 +328,11 @@ function ProfileHeader({
   onSpin: () => void;
   onPlay: () => void;
   onGrow: () => void;
+  onOrders: () => void;
+  onCart: () => void;
+  onLogout: () => void;
+  onFriend: (action: 'request' | 'accept' | 'decline' | 'block') => void;
+  friendNote: string | null;
 }) {
   const initial = (person.display_name ?? person.username).slice(0, 1).toUpperCase();
   return (
@@ -326,6 +374,20 @@ function ProfileHeader({
         {person.bio ? <Text style={{ color: palette.ivory, fontSize: 15, lineHeight: 21, marginTop: 4 }}>{person.bio}</Text> : null}
         {person.viewer.is_friend ? (
           <Text style={{ color: palette.goldSoft, fontSize: 13, fontWeight: '600', marginTop: 4 }}>{t('profile.friend')}</Text>
+        ) : null}
+        <FriendActions friendNote={friendNote} onFriend={onFriend} person={person} />
+        {person.viewer.is_self ? (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+            <Pressable accessibilityRole="button" onPress={onOrders} style={pill}>
+              <Text style={pillText}>{t('profile.orders')}</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" onPress={onCart} style={pill}>
+              <Text style={pillText}>{t('profile.cart')}</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" onPress={onLogout} style={pill}>
+              <Text style={pillText}>{t('profile.logout')}</Text>
+            </Pressable>
+          </View>
         ) : null}
       </View>
       <View style={{ flexDirection: 'row', gap: 16 }}>
@@ -374,6 +436,52 @@ function ProfileHeader({
     </View>
   );
 }
+
+function FriendActions({
+  person,
+  onFriend,
+  friendNote,
+}: {
+  person: UserProfile;
+  onFriend: (action: 'request' | 'accept' | 'decline' | 'block') => void;
+  friendNote: string | null;
+}) {
+  const connection = person.viewer.connection ?? (person.viewer.is_self ? 'self' : person.viewer.is_friend ? 'friends' : 'none');
+  if (connection === 'self') {
+    return null;
+  }
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+      {connection === 'none' ? (
+        <Pressable accessibilityRole="button" onPress={() => onFriend('request')} style={pill}>
+          <Text style={pillText}>{t('profile.friendRequest')}</Text>
+        </Pressable>
+      ) : null}
+      {connection === 'pending_out' ? <Text style={{ color: palette.muted }}>{t('profile.friendPending')}</Text> : null}
+      {connection === 'pending_in' ? (
+        <>
+          <Pressable accessibilityRole="button" onPress={() => onFriend('accept')} style={pill}>
+            <Text style={pillText}>{t('profile.friendAccept')}</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" onPress={() => onFriend('decline')} style={pill}>
+            <Text style={pillText}>{t('profile.friendDecline')}</Text>
+          </Pressable>
+        </>
+      ) : null}
+      {connection === 'blocked' ? (
+        <Text style={{ color: palette.muted }}>{t('profile.blocked')}</Text>
+      ) : (
+        <Pressable accessibilityRole="button" onPress={() => onFriend('block')} style={pill}>
+          <Text style={pillText}>{t('profile.block')}</Text>
+        </Pressable>
+      )}
+      {friendNote ? <Text style={{ color: palette.goldSoft }}>{friendNote}</Text> : null}
+    </View>
+  );
+}
+
+const pill = { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.12)' as const };
+const pillText = { color: palette.ivory, fontSize: 13, fontWeight: '700' as const };
 
 function ClosetRowView({ item }: { item: ClosetRow }) {
   const [listed, setListed] = useState(item.status === 'listed');

@@ -1,5 +1,6 @@
-import { DropsScreen } from '@/features/drops/drops-screen';
+import { Redirect } from 'expo-router';
 
+/** Demo drop fixtures are not a purchase path. Group buys live on reels. */
 export default function DropsRoute() {
-  return <DropsScreen />;
+  return <Redirect href="/reels" />;
 }

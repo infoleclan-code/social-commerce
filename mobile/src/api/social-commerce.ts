@@ -1,4 +1,5 @@
 import { api, json, keyed, query } from '@/api/client';
+import { newIdempotencyKey } from '@/lib/idempotency';
 import type {
   BlindBoxPull,
   CheckoutOrder,
@@ -205,8 +206,14 @@ export function fetchRewards(signal?: AbortSignal): Promise<{ coins: number; xp:
   return api<{ data: { coins: number; xp: number; cash: DisplayMoney; coupons: { id: string; label: string; discount_bps: number }[] } }>('/me/rewards', { signal }).then((response) => response.data);
 }
 
+let lootKey: string | null = null;
+
 export function openLootBox(): Promise<{ coupon: { id: string; label: string; discount_bps: number }; coins: number }> {
-  return api<{ data: { coupon: { id: string; label: string; discount_bps: number }; coins: number } }>('/rewards/loot-box', json('POST')).then((response) => response.data);
+  lootKey ??= newIdempotencyKey('loot');
+  return api<{ data: { coupon: { id: string; label: string; discount_bps: number }; coins: number } }>('/rewards/loot-box', keyed(lootKey)).then((response) => {
+    lootKey = null;
+    return response.data;
+  });
 }
 
 export function recordWatch(postId: string, watchedMs: number, durationMs: number): Promise<{ rewarded: boolean }> {
@@ -311,6 +318,7 @@ export type OneTapParams = {
   productId: string;
   variantSku: string | null;
   quantity: number;
+  expectedTotalMinor?: number | null;
 };
 
 /**
@@ -318,7 +326,12 @@ export type OneTapParams = {
  * tap: the server answers a repeat with the order it already created instead of charging twice.
  */
 export async function oneTapCheckout(params: OneTapParams, idempotencyKey: string): Promise<OneTapResponse> {
-  const body = { product_id: params.productId, variant_sku: params.variantSku, quantity: params.quantity };
+  const body = {
+    product_id: params.productId,
+    variant_sku: params.variantSku,
+    quantity: params.quantity,
+    expected_total_minor: params.expectedTotalMinor ?? undefined,
+  };
   return (await api<Envelope<OneTapResponse>>('/checkout/one-tap', json('POST', body, { 'Idempotency-Key': idempotencyKey }))).data;
 }
 
@@ -354,4 +367,79 @@ export async function beginPaymentMethodSetup(idempotencyKey: string): Promise<P
 /** After PaymentSheet succeeds: the server verifies the SetupIntent with Stripe and makes it the default. */
 export async function confirmPaymentMethodSetup(setupIntentId: string, idempotencyKey: string): Promise<PaymentSetupConfirmation> {
   return (await api<Envelope<PaymentSetupConfirmation>>('/payment-methods/confirm', keyed(idempotencyKey, { setup_intent_id: setupIntentId }))).data;
+}
+
+export type SessionUser = { id: string; username: string; display_name: string | null };
+
+export async function registerAccount(body: { email: string; password: string; username: string; display_name: string }): Promise<{ token: string; user: SessionUser }> {
+  return (await api<Envelope<{ token: string; user: SessionUser }>>('/auth/register', json('POST', body))).data;
+}
+
+export async function loginAccount(email: string, password: string): Promise<{ token: string; user: SessionUser }> {
+  return (await api<Envelope<{ token: string; user: SessionUser }>>('/auth/login', json('POST', { email, password }))).data;
+}
+
+export async function logoutAccount(deviceId?: string): Promise<void> {
+  await api('/auth/logout', json('POST', deviceId ? { device_id: deviceId } : {}));
+}
+
+export type CartLine = {
+  product_id: string;
+  title: string;
+  brand?: string | null;
+  image_url?: string | null;
+  quantity: number;
+  stock?: number;
+  available: boolean;
+  price: { amount_minor: number; currency: string; minor_unit: number };
+};
+
+export function fetchCart(signal?: AbortSignal): Promise<CartLine[]> {
+  return api<Envelope<CartLine[]>>('/cart', { signal }).then((body) => body.data);
+}
+
+export function saveCartItem(productId: string, quantity: number): Promise<CartLine[]> {
+  return api<Envelope<CartLine[]>>(`/cart/${encodeURIComponent(productId)}`, json('PUT', { quantity })).then((body) => body.data);
+}
+
+export function removeCartItem(productId: string): Promise<void> {
+  return api<void>(`/cart/${encodeURIComponent(productId)}`, { method: 'DELETE' });
+}
+
+export type ShippingAddress = { id: string; line: string; locality: string; postal_code: string; country: string; is_default: boolean };
+
+export function fetchAddresses(signal?: AbortSignal): Promise<ShippingAddress[]> {
+  return api<Envelope<ShippingAddress[]>>('/addresses', { signal }).then((body) => body.data);
+}
+
+export function saveAddress(body: { line: string; locality: string; postal_code: string; country: string; is_default?: boolean }): Promise<ShippingAddress> {
+  return api<Envelope<ShippingAddress>>('/addresses', json('POST', body)).then((response) => response.data);
+}
+
+export function checkoutCart(addressId: string | null, idempotencyKey: string): Promise<{ orders: { id: string }[] }> {
+  return api<Envelope<{ orders: { id: string }[] }>>('/cart/checkout', keyed(idempotencyKey, { address_id: addressId })).then((body) => body.data);
+}
+
+export function fetchOrders(signal?: AbortSignal): Promise<OrderSummary[]> {
+  return api<Envelope<OrderSummary[]>>('/orders', { signal }).then((body) => body.data);
+}
+
+export function withdrawOrder(orderId: string, idempotencyKey: string): Promise<void> {
+  return api(`/orders/${encodeURIComponent(orderId)}/withdraw`, keyed(idempotencyKey)).then(() => undefined);
+}
+
+export function requestFriend(userId: string): Promise<{ connection: string }> {
+  return api<Envelope<{ connection: string }>>(`/users/${encodeURIComponent(userId)}/friend-request`, json('POST')).then((body) => body.data);
+}
+
+export function acceptFriend(userId: string): Promise<{ connection: string }> {
+  return api<Envelope<{ connection: string }>>(`/users/${encodeURIComponent(userId)}/friend-accept`, json('POST')).then((body) => body.data);
+}
+
+export function blockUser(userId: string): Promise<void> {
+  return api(`/users/${encodeURIComponent(userId)}/block`, json('POST')).then(() => undefined);
+}
+
+export function declineFriend(userId: string): Promise<{ connection: string }> {
+  return api<Envelope<{ connection: string }>>(`/users/${encodeURIComponent(userId)}/friend-decline`, json('POST')).then((body) => body.data);
 }

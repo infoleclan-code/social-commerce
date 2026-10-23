@@ -314,8 +314,7 @@ export function query(params: Record<string, string | number | null | undefined>
   return parts.length > 0 ? `?${parts.join('&')}` : '';
 }
 
+/** Records an open of a tracked share. The server counts it on GET /s/{token}. */
 export function recordShareOpen(token: string): Promise<void> {
-  return api<void>(`/share-links/${encodeURIComponent(token)}/open`, {
-    method: 'POST',
-  });
+  return api<void>(`/s/${encodeURIComponent(token)}`).then(() => undefined);
 }

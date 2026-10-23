@@ -13,5 +13,12 @@ export function expectedTotalMinor(offer: ShopOffer, couponBps: number, quantity
   const flashLive = flash !== null && flash.stock_remaining >= quantity && Date.parse(flash.ends_at) > now;
   const flashBps = flashLive ? Math.max(0, flash.discount_bps) : 0;
   const bps = Math.min(MAX_DISCOUNT_BPS, flashBps + Math.max(0, couponBps));
-  return Math.floor((offer.product.price.amount_minor * (10_000 - bps)) / 10_000) * quantity;
+  const unit = Math.floor((offer.product.price.amount_minor * (10_000 - bps)) / 10_000);
+  const merchandise = unit * quantity;
+  const shipping = offer.landed?.shipping.amount_minor ?? 0;
+  const vatBps = offer.landed?.vat_bps ?? 0;
+  const dutyBps = offer.landed?.duty_bps ?? 0;
+  const duty = Math.floor((merchandise * Math.max(0, dutyBps)) / 10_000);
+  const vat = Math.floor(((merchandise + shipping) * Math.max(0, vatBps)) / 10_000);
+  return merchandise + shipping + vat + duty;
 }

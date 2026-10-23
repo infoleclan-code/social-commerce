@@ -8,11 +8,13 @@ import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
 import * as Linking from 'expo-linking';
 import { colorScheme } from 'nativewind';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { BackHandler, Platform } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { createQueryClient } from '@/api/query-client';
+import { AuthScreen } from '@/features/auth/auth-screen';
+import { useSession } from '@/stores/session';
 import { DupeSearchOverlay } from '@/features/feed/dupe-search-overlay';
 import { ProductSheet } from '@/features/feed/product-sheet';
 import { CheckoutSheet } from '@/features/checkout/checkout-sheet';
@@ -43,6 +45,21 @@ function GlobalSearch() {
     return null;
   }
   return open ? <VisualSearch /> : null;
+}
+
+function SessionGate({ children }: { children: ReactNode }) {
+  const ready = useSession((state) => state.ready);
+  const signedIn = useSession((state) => state.signedIn);
+  useEffect(() => {
+    void useSession.getState().refresh();
+  }, []);
+  if (!ready) {
+    return null;
+  }
+  if (!signedIn) {
+    return <AuthScreen />;
+  }
+  return children;
 }
 
 function lockDarkMode(): void {
@@ -158,6 +175,7 @@ export default function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <ThemeProvider value={navigationTheme}>
           <StatusBar style="light" />
+          <SessionGate>
           <Stack
             screenOptions={{
               headerShown: false,
@@ -175,7 +193,9 @@ export default function RootLayout() {
             <Stack.Screen name="taste" />
             <Stack.Screen name="sell" />
             <Stack.Screen name="product/[id]" />
+            <Stack.Screen name="orders" />
           </Stack>
+          </SessionGate>
           <SheetNavigationReset />
           <ProductSheet />
           <DupeFinderSheet />

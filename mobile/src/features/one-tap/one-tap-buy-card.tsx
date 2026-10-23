@@ -32,6 +32,8 @@ type Props = {
   /** Denser layout for result lists (the scanner). */
   compact?: boolean;
   style?: StyleProp<ViewStyle>;
+  /** The landed total on screen. Sent so a price move is confirmed instead of charged. */
+  expectedTotalMinor?: number | null;
 };
 
 type ButtonIcon = 'zap' | 'spinner' | 'check' | 'shield' | 'external' | null;
@@ -100,7 +102,7 @@ function methodLabel(summary: PaymentMethodSummary | null | undefined): string |
  * card; the server enforces stock, limits and idempotency, and the banner (OneTapBanner) offers the undo.
  * Affiliate products show "Shop at {merchant}" and open a tracked link instead.
  */
-export function OneTapBuyCard({ product, compact = false, style }: Props) {
+export function OneTapBuyCard({ product, compact = false, style, expectedTotalMinor = null }: Props) {
   const queryClient = useQueryClient();
   const reduceMotion = useReducedMotion();
   const purchase = useOneTapStore((state) => state.purchases[product.id]);
@@ -177,7 +179,7 @@ export function OneTapBuyCard({ product, compact = false, style }: Props) {
       return;
     }
     playLock();
-    startOneTap(queryClient, product, isOneTap ? (selected?.sku ?? null) : null);
+    startOneTap(queryClient, product, isOneTap ? (selected?.sku ?? null) : null, 1, expectedTotalMinor);
   }
 
   const imageSize = compact ? 56 : 52;

@@ -29,7 +29,7 @@ export type UserProfile = {
   avatar_url: string | null;
   bio: string | null;
   counts: { posts: number; followers: number; following: number };
-  viewer: { is_self: boolean; is_friend: boolean };
+  viewer: { is_self: boolean; is_friend: boolean; connection?: 'self' | 'none' | 'pending_out' | 'pending_in' | 'friends' | 'blocked' };
 };
 
 // ------------------------------------------------------------------------------------------ products
@@ -95,6 +95,9 @@ export type ShopOffer = {
     shipping: DisplayMoney;
     vat: DisplayMoney;
     duty: DisplayMoney;
+    /** Already zero when VAT or duty does not apply, so the client can match the server total. */
+    vat_bps?: number;
+    duty_bps?: number;
     delivers_on: string;
   } | null;
   source: 'manual' | 'auto';
@@ -191,6 +194,8 @@ export type LandedQuote = {
   vat: DisplayMoney;
   duty: DisplayMoney;
   total: DisplayMoney;
+  vat_bps?: number;
+  duty_bps?: number;
   delivers_on: string;
 };
 
@@ -324,6 +329,10 @@ export type OrderSummary = {
     quantity: number;
   } | null;
   placed_at: string | null;
+  fulfillment?: 'preparing' | 'shipped' | 'delivered';
+  carrier?: string | null;
+  tracking_number?: string | null;
+  shipped_at?: string | null;
 };
 
 export type OneTapResponse =

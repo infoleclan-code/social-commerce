@@ -153,7 +153,7 @@ function clearWindowTimer(productId: string): void {
  * Starts a purchase from a buy button. A second tap while one is running only refocuses the banner.
  * Affiliate products go through the same endpoint, which answers with a tracked merchant link.
  */
-export function startOneTap(queryClient: QueryClient, product: ProductCard, variantSku: string | null, quantity = 1): void {
+export function startOneTap(queryClient: QueryClient, product: ProductCard, variantSku: string | null, quantity = 1, expectedTotalMinor: number | null = null): void {
   const store = useOneTapStore.getState();
   const existing = store.purchases[product.id];
   if (isBusy(existing)) {
@@ -166,7 +166,7 @@ export function startOneTap(queryClient: QueryClient, product: ProductCard, vari
     productId: product.id,
     title: product.title,
     merchantName: product.merchant.name,
-    params: { productId: product.id, variantSku, quantity },
+    params: { productId: product.id, variantSku, quantity, expectedTotalMinor },
     key: newIdempotencyKey(),
     attempt: (existing?.attempt ?? 0) + 1,
     phase: 'submitting',

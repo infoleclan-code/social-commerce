@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 
 import type { ShopOffer } from '@/api/contracts';
+import { saveCartItem } from '@/api/social-commerce';
+import { expectedTotalMinor } from '@/features/payments/expected-total';
 import { t } from '@/lib/i18n';
 import { formatMoney, type DisplayMoney } from '@/lib/money';
 import { palette, radius } from '@/theme/tokens';
@@ -24,7 +26,10 @@ export function ShopCard({ offer, busy, couponLabel, onBuy, onSquad, onHold, onG
   const flash = offer.flash;
   const seconds = useCountdown(flash?.ends_at ?? null);
   const liveFlash = flash !== null && seconds > 0;
-  const price = liveFlash ? discounted(offer.product.price, flash.discount_bps) : offer.product.price;
+  const price = {
+    ...offer.product.price,
+    amount_minor: expectedTotalMinor(offer, 0, 1),
+  };
 
   return (
     <View
@@ -53,7 +58,7 @@ export function ShopCard({ offer, busy, couponLabel, onBuy, onSquad, onHold, onG
           {offer.product.title}
         </Text>
         <Text style={{ color: palette.ivory, fontSize: 13 }}>
-          {offer.landed ? formatMoney(offer.landed.total) : formatMoney(price)}
+          {formatMoney(price)}
           {offer.product.squad_price ? `  ·  ${formatMoney(offer.product.squad_price)}` : ''}
           {liveFlash ? `  ${t('shop.off', { percent: String(flash.discount_bps / 100) })}` : ''}
         </Text>
@@ -84,7 +89,8 @@ export function ShopCard({ offer, busy, couponLabel, onBuy, onSquad, onHold, onG
           <Chip disabled={busy || offer.product.stock < 1} label={t('shop.gift')} onPress={onGift} />
           {offer.drop_hour && offer.drop_hour.remaining > 0 ? <Chip disabled={busy} label={t('shop.dropHold')} onPress={onHold} /> : null}
           {offer.product.try_on ? <Chip disabled={busy} label={t('shop.tryOn')} onPress={onTryOn} /> : null}
-          <Chip disabled={busy} label={t('shop.reviews')} onPress={() => router.push(`/product/${offer.product.id}`)} />
+          <Chip disabled={busy || offer.product.stock < 1} label={t('shop.addCart')} onPress={() => void saveCartItem(offer.product.id, 1)} />
+          <Chip disabled={busy} label={t('shop.reviews')} onPress={() => router.push(`/product/${encodeURIComponent(offer.product.id)}`)} />
           {busy ? <ActivityIndicator color={palette.goldSoft} size="small" /> : null}
         </View>
       </View>
@@ -109,13 +115,6 @@ function Chip({ label, onPress, disabled, primary = false }: { label: string; on
       <Text style={{ color: primary ? palette.ink : palette.ivory, fontSize: 12, fontWeight: '700' }}>{label}</Text>
     </Pressable>
   );
-}
-
-function discounted(price: DisplayMoney, discountBps: number): DisplayMoney {
-  return {
-    ...price,
-    amount_minor: Math.floor((price.amount_minor * (10_000 - discountBps)) / 10_000),
-  };
 }
 
 function useCountdown(endsAt: string | null): number {
