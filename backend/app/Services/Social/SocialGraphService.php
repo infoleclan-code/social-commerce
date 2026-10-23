@@ -9,12 +9,12 @@ use App\Enums\ConnectionStatus;
 use App\Exceptions\ApiException;
 use App\Models\SocialConnection;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 /**
- * Friendship is mutual: the schema stores one row per unordered pair, so there is no one-way follow.
- * followers_count and following_count both stay the accepted-friend count.
- * Unblock deletes the row (the documented inverse of block). Declined can become pending again.
+ * Friendship is mutual. Follows are one-way and counted separately. A block removes both follows
+ * and hides the profile. Unblock deletes the connection row. Declined can become pending again.
  */
 final class SocialGraphService
 {
@@ -77,6 +77,7 @@ final class SocialGraphService
     public function block(User $viewer, string $otherId): array
     {
         $other = $this->other($viewer, $otherId);
+        $this->dropFollows($viewer, $other);
         $row = SocialConnection::between($viewer, $other);
         if ($row === null) {
             $row = new SocialConnection([
@@ -117,6 +118,50 @@ final class SocialGraphService
         $row->delete();
     }
 
+    /** @return array{following: bool, followers: int, following_count: int} */
+    public function follow(User $viewer, string $otherId): array
+    {
+        $other = $this->other($viewer, $otherId);
+        if ($this->blockedPair($viewer, $other)) {
+            throw ApiException::profileNotFound();
+        }
+        DB::table('follows')->insertOrIgnore([
+            'follower_id' => $viewer->id,
+            'followee_id' => $other->id,
+            'created_at' => now(),
+        ]);
+
+        return $this->followState($viewer, $other);
+    }
+
+    /** @return array{following: bool, followers: int, following_count: int} */
+    public function unfollow(User $viewer, string $otherId): array
+    {
+        $other = $this->other($viewer, $otherId);
+        DB::table('follows')->where('follower_id', $viewer->id)->where('followee_id', $other->id)->delete();
+
+        return $this->followState($viewer, $other);
+    }
+
+    public function follows(User $viewer, User $user): bool
+    {
+        if ($user->is($viewer)) {
+            return false;
+        }
+
+        return DB::table('follows')->where('follower_id', $viewer->id)->where('followee_id', $user->id)->exists();
+    }
+
+    public function followerCount(User $user): int
+    {
+        return (int) DB::table('follows')->where('followee_id', $user->id)->count();
+    }
+
+    public function followingCount(User $user): int
+    {
+        return (int) DB::table('follows')->where('follower_id', $user->id)->count();
+    }
+
     public function label(User $viewer, User $user): string
     {
         if ($user->is($viewer)) {
@@ -134,6 +179,29 @@ final class SocialGraphService
         }
 
         return (string) $row->requester_id === (string) $viewer->id ? 'pending_out' : 'pending_in';
+    }
+
+    /** @return array{following: bool, followers: int, following_count: int} */
+    private function followState(User $viewer, User $other): array
+    {
+        return [
+            'following' => $this->follows($viewer, $other),
+            'followers' => $this->followerCount($other),
+            'following_count' => $this->followingCount($viewer),
+        ];
+    }
+
+    private function dropFollows(User $viewer, User $other): void
+    {
+        DB::table('follows')->where('follower_id', $viewer->id)->where('followee_id', $other->id)->delete();
+        DB::table('follows')->where('follower_id', $other->id)->where('followee_id', $viewer->id)->delete();
+    }
+
+    private function blockedPair(User $viewer, User $other): bool
+    {
+        $row = SocialConnection::between($viewer, $other);
+
+        return $row !== null && $row->status === ConnectionStatus::Blocked;
     }
 
     private function other(User $viewer, string $otherId): User

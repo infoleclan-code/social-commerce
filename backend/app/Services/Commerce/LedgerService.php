@@ -37,9 +37,11 @@ final class LedgerService
 
     public const PLATFORM_SALES = 'platform:sales';
 
+    public const PLATFORM_FEE = 'platform:fee';
+
     public const KINDS = [
         'sale', 'commission_pending', 'commission_release', 'commission_reverse', 'refund',
-        'price_protection', 'price_protection_reverse',
+        'price_protection', 'price_protection_reverse', 'platform_fee', 'platform_fee_reverse',
     ];
 
     /** Days after delivery before a creator's commission becomes withdrawable (the return window). */
@@ -234,6 +236,49 @@ final class LedgerService
         $total = (int) DB::table('orders')->where('id', $orderId)->value('total_minor');
         $this->settleCommissions($orderId, $total, $total);
         $this->settlePriceProtection($orderId, $total, $total);
+        $this->settlePlatformFee($orderId, $total, $total);
+    }
+
+    /**
+     * The platform's fee on a captured order. Debiting sales and crediting platform:fee splits the
+     * sale journal (which credited sales for the whole charge) into seller proceeds and platform revenue.
+     */
+    public function recordPlatformFee(string $orderId, int $feeMinor, string $currency): ?string
+    {
+        if ($feeMinor < 1) {
+            return null;
+        }
+
+        return $this->post('platform_fee', $orderId, [
+            ['account' => self::PLATFORM_SALES, 'direction' => 'debit', 'amount_minor' => $feeMinor, 'currency' => $currency],
+            ['account' => self::PLATFORM_FEE, 'direction' => 'credit', 'amount_minor' => $feeMinor, 'currency' => $currency],
+        ], 'platform_fee:'.$orderId);
+    }
+
+    /**
+     * Brings the posted platform fee down to floor(fee * kept / total). Safe to call any number of times.
+     */
+    public function settlePlatformFee(string $orderId, int $refundedTotalMinor, int $orderTotalMinor): void
+    {
+        DB::transaction(function () use ($orderId, $refundedTotalMinor, $orderTotalMinor): void {
+            $this->lockOrder($orderId);
+            $granted = (int) DB::table('orders')->where('id', $orderId)->value('platform_fee_minor');
+            if ($granted < 1 || $orderTotalMinor < 1) {
+                return;
+            }
+            $kept = max(0, $orderTotalMinor - $refundedTotalMinor);
+            $target = intdiv($granted * $kept, $orderTotalMinor);
+            $held = $this->platformFeeHeld($orderId);
+            $delta = $held - $target;
+            if ($delta < 1) {
+                return;
+            }
+            $currency = (string) (DB::table('orders')->where('id', $orderId)->value('currency') ?: 'USD');
+            $this->post('platform_fee_reverse', $orderId, [
+                ['account' => self::PLATFORM_FEE, 'direction' => 'debit', 'amount_minor' => $delta, 'currency' => $currency],
+                ['account' => self::PLATFORM_SALES, 'direction' => 'credit', 'amount_minor' => $delta, 'currency' => $currency],
+            ], 'platform_fee_reverse:'.$orderId.':'.$target);
+        });
     }
 
     // ---------------------------------------------------------------- price protection
@@ -327,6 +372,23 @@ final class LedgerService
         ksort($positions);
 
         return $positions;
+    }
+
+    private function platformFeeHeld(string $orderId): int
+    {
+        $rows = DB::table('ledger_lines as l')
+            ->join('ledger_journals as j', 'j.id', '=', 'l.journal_id')
+            ->where('j.order_id', $orderId)
+            ->whereIn('j.kind', ['platform_fee', 'platform_fee_reverse'])
+            ->where('l.account', self::PLATFORM_FEE)
+            ->groupBy('l.direction')
+            ->get(['l.direction', DB::raw('SUM(l.amount_minor) AS amount')]);
+        $held = 0;
+        foreach ($rows as $row) {
+            $held += $row->direction === 'credit' ? (int) $row->amount : -(int) $row->amount;
+        }
+
+        return $held;
     }
 
     /** @return array{credited: int, reversed: int, currency: string} */

@@ -1,0 +1,3 @@
+# Run the Laravel scheduler every minute. Capture, reconciliation, commission release,
+# gift refunds, drop rotation, anonymization, and the ledger check all live on this schedule.
+* * * * * cd /workspace/backend && php artisan schedule:run >> /var/log/laravel-schedule.log 2>&1

@@ -18,6 +18,8 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         // API is token-based (Sanctum bearer tokens from the mobile app); no session/CSRF on /api.
+        // There is no web login route. A guest hitting /api must get 401, not a redirect that 500s.
+        $middleware->redirectGuestsTo(fn (Request $request) => $request->is('api/*') || $request->expectsJson() ? null : '/');
         $middleware->alias(['idempotent' => EnforceIdempotency::class]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

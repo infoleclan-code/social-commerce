@@ -124,16 +124,22 @@ final class ConcurrencyTest extends TestCase
     public function test_twelve_people_joining_a_five_person_squad_leaves_exactly_five(): void
     {
         $host = $this->user();
+        $product = $this->product(stock: 20);
         $squad = (string) Str::uuid7();
-        $this->race->table('squads')->insert(['id' => $squad, 'product_id' => $this->product(), 'host_id' => $host, 'discount_bps_per_member' => 500, 'max_members' => 5, 'floor_price_minor' => 500, 'expires_at' => now()->addDay(), 'created_at' => now()]);
-        $this->race->table('squad_members')->insert(['squad_id' => $squad, 'user_id' => $host, 'joined_at' => now()]);
-        $joiners = array_map(fn (): string => $this->user(), range(1, 12));
+        $this->race->table('squads')->insert(['id' => $squad, 'product_id' => $product, 'host_id' => $host, 'discount_bps_per_member' => 500, 'max_members' => 5, 'floor_price_minor' => 500, 'expires_at' => now()->addDay(), 'created_at' => now()]);
+        $joiners = array_map(fn (): string => $this->buyerWithCard(), range(1, 12));
 
-        $results = $this->race('join_squad', 12, ['squad' => $squad, 'buyers' => $joiners]);
+        $results = $this->race('checkout_squad', 12, [
+            'squad' => $squad,
+            'product' => $product,
+            'buyers' => $joiners,
+            'keys' => array_map(fn (int $i): string => 'squad-race-'.$i.'-'.Str::random(6), range(0, 11)),
+        ]);
 
-        $this->assertCount(4, array_filter($results, fn (array $r): bool => $r['ok']), json_encode($results));
-        $this->assertCount(8, array_filter($results, fn (array $r): bool => ($r['code'] ?? null) === 'SQUAD_CLOSED'));
+        $this->assertCount(5, array_filter($results, fn (array $r): bool => $r['ok']), json_encode($results));
+        $this->assertCount(7, array_filter($results, fn (array $r): bool => ($r['code'] ?? null) === 'SQUAD_CLOSED'));
         $this->assertSame(5, $this->race->table('squad_members')->where('squad_id', $squad)->count());
+        $this->assertSame(5, $this->race->table('orders')->where('squad_id', $squad)->where('status', '<>', 'cancelled')->count());
     }
 
     public function test_one_webhook_delivered_eight_times_at_once_is_applied_once(): void

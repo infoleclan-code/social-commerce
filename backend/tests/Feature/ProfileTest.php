@@ -32,9 +32,17 @@ final class ProfileTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.bio', 'City reels')
             ->assertJsonPath('data.counts.posts', 2)
-            ->assertJsonPath('data.counts.followers', 1)
-            ->assertJsonPath('data.counts.following', 1)
+            ->assertJsonPath('data.counts.followers', 0)
+            ->assertJsonPath('data.counts.following', 0)
             ->assertJsonPath('data.viewer.is_self', true);
+        $this->postJson('/api/v1/users/'.$friend->id.'/follow')->assertCreated();
+        $this->getJson('/api/v1/me')
+            ->assertJsonPath('data.counts.followers', 0)
+            ->assertJsonPath('data.counts.following', 1);
+        $this->getJson('/api/v1/users/'.$friend->id)
+            ->assertJsonPath('data.counts.followers', 1)
+            ->assertJsonPath('data.counts.following', 0)
+            ->assertJsonPath('data.viewer.following', true);
 
         $this->getJson('/api/v1/users/'.$friend->id)
             ->assertOk()

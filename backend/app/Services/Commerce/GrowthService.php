@@ -424,6 +424,9 @@ final class GrowthService
             'posts' => DB::table('feed_posts')->where('user_id', $user->id)->get(['id', 'caption', 'audience', 'created_at']),
             'comments' => DB::table('feed_post_comments')->where('user_id', $user->id)->get(['id', 'post_id', 'body', 'created_at']),
             'likes' => DB::table('feed_post_likes')->where('user_id', $user->id)->get(['post_id', 'created_at']),
+            'follows' => DB::table('follows')
+                ->where(fn ($query) => $query->where('follower_id', $user->id)->orWhere('followee_id', $user->id))
+                ->get(['follower_id', 'followee_id', 'created_at']),
             'connections' => DB::table('social_connections')
                 ->where(fn ($query) => $query->where('requester_id', $user->id)->orWhere('addressee_id', $user->id))
                 ->get(['requester_id', 'addressee_id', 'status', 'created_at']),
@@ -513,7 +516,7 @@ final class GrowthService
             if ($squad === null) {
                 throw ApiException::squadClosed();
             }
-            $members = (int) DB::table('squad_members')->where('squad_id', $id)->count();
+            $members = SquadPriceService::seatCount($id);
 
             return ['kind' => 'squad', 'members' => $members, 'max_members' => (int) $squad->max_members, 'expires_at' => (string) $squad->expires_at];
         }

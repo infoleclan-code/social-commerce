@@ -8,7 +8,6 @@ use App\Exceptions\ApiException;
 use App\Models\User;
 use App\Services\Payments\PaymentStep;
 use App\Support\Currency;
-use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -77,13 +76,16 @@ final class CheckoutService
         $squad = null;
         $squadBps = 0;
         if ($squadId !== null) {
-            $squad = DB::table('squads')->where('id', $squadId)->where('product_id', $productId)->first();
-            if ($squad === null || now()->greaterThan($squad->expires_at)
-                || ! DB::table('squad_members')->where('squad_id', $squadId)->where('user_id', $buyer->id)->exists()) {
+            $squad = DB::table('squads')->where('id', $squadId)->where('product_id', $productId)->lockForUpdate()->first();
+            if ($squad === null || now()->greaterThan($squad->expires_at)) {
                 throw ApiException::squadClosed();
             }
-            $members = (int) DB::table('squad_members')->where('squad_id', $squadId)->count();
-            $squadBps = min(2500, $members * (int) $squad->discount_bps_per_member);
+            $seats = SquadPriceService::seatCount($squadId);
+            $already = SquadPriceService::buyerHasSeat($squadId, (string) $buyer->id);
+            if (! $already && $seats >= (int) $squad->max_members) {
+                throw ApiException::squadClosed();
+            }
+            $squadBps = min(2500, ($seats + ($already ? 0 : 1)) * (int) $squad->discount_bps_per_member);
         }
 
         $coupon = null;
@@ -120,6 +122,9 @@ final class CheckoutService
         }
         if ($coupon !== null) {
             DB::table('coupons')->where('id', $coupon->id)->whereNull('redeemed_at')->update(['redeemed_at' => now()]);
+        }
+        if ($squad !== null) {
+            SquadPriceService::claimSeat((string) $squad->id, (string) $buyer->id);
         }
 
         $merchandise = $unit * $quantity;
@@ -213,34 +218,21 @@ final class CheckoutService
                 'expires_at' => now()->addHours(24),
                 'created_at' => now(),
             ]);
-            DB::table('squad_members')->insert([
-                'squad_id' => $id,
-                'user_id' => $host->id,
-                'joined_at' => now(),
-            ]);
         });
 
         return $this->squadPayload($id);
     }
 
     /** @return array<string, mixed> */
+    /**
+     * An unpaid join does not reserve a seat and does not change the discount. A seat is taken only
+     * when checkout or authorize-join creates a paid or authorized order.
+     */
     public function joinSquad(User $user, string $squadId): array
     {
         $squad = DB::table('squads')->where('id', $squadId)->first();
         if ($squad === null || now()->greaterThan($squad->expires_at)) {
             throw ApiException::squadClosed();
-        }
-        try {
-            DB::transaction(fn () => DB::table('squad_members')->insertOrIgnore([
-                'squad_id' => $squadId,
-                'user_id' => $user->id,
-                'joined_at' => now(),
-            ]));
-        } catch (QueryException $full) {
-            if (($full->errorInfo[0] ?? '') === '23514') {
-                throw ApiException::squadClosed();
-            }
-            throw $full;
         }
 
         return $this->squadPayload($squadId);
@@ -279,7 +271,7 @@ final class CheckoutService
     private function squadPayload(string $squadId): array
     {
         $squad = DB::table('squads')->where('id', $squadId)->first();
-        $members = (int) DB::table('squad_members')->where('squad_id', $squadId)->count();
+        $members = SquadPriceService::seatCount($squadId);
 
         return [
             'id' => $squad->id,

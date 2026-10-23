@@ -26,12 +26,14 @@ final readonly class ProfileService
     public function show(User $viewer, string $userId): User
     {
         $user = $this->visibleUser($viewer, $userId);
+        $social = app(SocialGraphService::class);
         $user->setAttribute('posts_count', $this->visiblePosts($viewer, $user)->count());
-        $user->setAttribute('followers_count', $user->friends()->count());
-        $user->setAttribute('following_count', $user->followers_count);
+        $user->setAttribute('followers_count', $social->followerCount($user));
+        $user->setAttribute('following_count', $social->followingCount($user));
         $user->setAttribute('is_self', $user->is($viewer));
         $user->setAttribute('is_friend', ! $user->is_self && $this->isFriend($viewer, $user));
-        $user->setAttribute('connection', app(SocialGraphService::class)->label($viewer, $user));
+        $user->setAttribute('is_following', $social->follows($viewer, $user));
+        $user->setAttribute('connection', $social->label($viewer, $user));
 
         return $user;
     }

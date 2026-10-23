@@ -68,6 +68,11 @@ final class Purchases
                 if ($total < 1 || $total > (int) config('commerce.max_order_minor')) {
                     throw ApiException::orderLimit();
                 }
+                $merchandise = (int) ($values['unit_price_minor'] ?? 0) * max(1, (int) ($values['quantity'] ?? 1));
+                $values['platform_fee_minor'] = intdiv(
+                    ($merchandise > 0 ? $merchandise : $total) * max(0, (int) config('commerce.platform_fee_bps', 1000)),
+                    10000,
+                );
                 $captureAfter = $this->guard($buyer, $total, $captureDelaySeconds);
                 $orderId = (string) Str::uuid7();
                 DB::table('orders')->insert($values + [

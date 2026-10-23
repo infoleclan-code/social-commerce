@@ -54,7 +54,7 @@ class AppServiceProvider extends ServiceProvider
             return new LocalVisionDescriber;
         });
         $this->app->singleton(PaymentGateway::class, function (Application $app): PaymentGateway {
-            if ($app->environment('testing')) {
+            if ($app->environment('testing') || (! $app->environment('production') && (string) config('services.stripe.secret') === '')) {
                 return new FakePaymentGateway;
             }
 
@@ -67,7 +67,7 @@ class AppServiceProvider extends ServiceProvider
             );
         });
         $this->app->singleton(SellerPayouts::class, function (Application $app): SellerPayouts {
-            if ($app->environment('testing')) {
+            if ($app->environment('testing') || (! $app->environment('production') && (string) config('services.stripe.secret') === '')) {
                 return new FakeSellerPayouts;
             }
 

@@ -8,7 +8,7 @@ final class FakeSellerPayouts implements SellerPayouts
 {
     public function createExpressAccount(string $email, string $country, string $idempotencyKey): string
     {
-        return 'acct_test';
+        return 'acct_test_'.substr(hash('sha256', $idempotencyKey), 0, 16);
     }
 
     public function onboardingUrl(string $accountId): string

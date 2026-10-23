@@ -57,6 +57,8 @@ Route::prefix('v1')->group(function (): void {
         Route::post('users/{user}/friend-request', [SocialController::class, 'request'])->middleware('throttle:social');
         Route::post('users/{user}/friend-accept', [SocialController::class, 'accept'])->middleware('throttle:social');
         Route::post('users/{user}/friend-decline', [SocialController::class, 'decline'])->middleware('throttle:social');
+        Route::post('users/{user}/follow', [SocialController::class, 'follow'])->middleware('throttle:social');
+        Route::delete('users/{user}/follow', [SocialController::class, 'unfollow'])->middleware('throttle:social');
         Route::post('users/{user}/block', [SocialController::class, 'block'])->middleware('throttle:social');
         Route::delete('users/{user}/block', [SocialController::class, 'unblock'])->middleware('throttle:social');
         Route::get('users/{user}', [ProfileController::class, 'show']);

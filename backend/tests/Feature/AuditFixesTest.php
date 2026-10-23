@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Services\Commerce\LedgerService;
 use App\Services\Search\VectorStore;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
@@ -36,7 +37,8 @@ final class AuditFixesTest extends TestCase
             ->value('capture_after');
 
         Sanctum::actingAs($this->makeUser());
-        $this->postJson('/api/v1/squads/'.$squad.'/join')->assertOk()->assertJsonPath('data.members', 2);
+        $this->postJson('/api/v1/squads/'.$squad.'/join')->assertOk()->assertJsonPath('data.members', 1);
+        $this->assertSame(1, DB::table('squad_members')->where('squad_id', $squad)->count());
         Sanctum::actingAs($host);
         $this->postJson('/api/v1/squads/'.$squad.'/settle')
             ->assertOk()
@@ -241,7 +243,7 @@ final class AuditFixesTest extends TestCase
         $this->withHeader('Authorization', 'Bearer '.$again)->getJson('/api/v1/me')->assertUnauthorized();
     }
 
-    public function test_friend_requests_are_mutual_and_counts_stay_the_accepted_friend_count(): void
+    public function test_friendship_stays_mutual_and_follows_are_counted_separately(): void
     {
         $ada = $this->makeUser();
         $bea = $this->makeUser();
@@ -250,9 +252,18 @@ final class AuditFixesTest extends TestCase
         Sanctum::actingAs($bea);
         $this->postJson('/api/v1/users/'.$ada->id.'/friend-accept')->assertOk()->assertJsonPath('data.connection', 'friends');
         $this->getJson('/api/v1/me')->assertOk()
-            ->assertJsonPath('data.counts.followers', 1)
-            ->assertJsonPath('data.counts.following', 1)
+            ->assertJsonPath('data.counts.followers', 0)
+            ->assertJsonPath('data.counts.following', 0)
             ->assertJsonPath('data.viewer.connection', 'self');
+        Sanctum::actingAs($ada);
+        $this->postJson('/api/v1/users/'.$bea->id.'/follow')->assertCreated()->assertJsonPath('data.following', true);
+        $this->getJson('/api/v1/me')->assertJsonPath('data.counts.following', 1)->assertJsonPath('data.counts.followers', 0);
+        $this->getJson('/api/v1/users/'.$bea->id)
+            ->assertJsonPath('data.counts.followers', 1)
+            ->assertJsonPath('data.counts.following', 0)
+            ->assertJsonPath('data.viewer.following', true)
+            ->assertJsonPath('data.viewer.connection', 'friends');
+        $this->deleteJson('/api/v1/users/'.$bea->id.'/follow')->assertOk()->assertJsonPath('data.following', false);
 
         $cam = $this->makeUser();
         Sanctum::actingAs($ada);
@@ -338,6 +349,27 @@ final class AuditFixesTest extends TestCase
         $this->assertStringStartsWith('erased_', (string) $scrubbed->username);
         $this->assertNull(DB::table('feed_posts')->where('id', $post)->first());
         $this->assertSame(0, DB::table('user_devices')->where('user_id', $user->id)->count());
+    }
+
+    public function test_a_refund_reverses_the_platform_fee(): void
+    {
+        $buyer = $this->makeUser();
+        $this->savedCard($buyer);
+        Sanctum::actingAs($buyer);
+        $id = (string) $this->postJson('/api/v1/checkout', ['product_id' => $this->catalogProduct(10_000)], $this->key('fee'))
+            ->assertCreated()
+            ->json('data.id');
+        $this->assertSame(1_000, (int) DB::table('orders')->where('id', $id)->value('platform_fee_minor'));
+
+        $this->expireUndoWindow($id);
+        $this->captureDue();
+        $ledger = app(LedgerService::class);
+        $this->assertSame(1_000, $ledger->balance(LedgerService::PLATFORM_FEE));
+        $this->assertSame(9_000, $ledger->balance(LedgerService::PLATFORM_SALES));
+
+        $this->postJson('/api/v1/orders/'.$id.'/withdraw', [], $this->key('fee-back'))->assertOk();
+        $this->assertSame(0, $ledger->balance(LedgerService::PLATFORM_FEE));
+        $this->assertSame(0, $ledger->balance(LedgerService::PLATFORM_SALES));
     }
 
     public function test_pgvector_below_0_8_does_not_create_vector_columns(): void

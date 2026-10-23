@@ -20,6 +20,9 @@ return [
     // Creator + referral commissions together, as a share of what the buyer paid.
     'max_commission_bps' => (int) env('COMMERCE_MAX_COMMISSION_BPS', 2000),
 
+    // Platform fee on merchandise (not shipping or tax), posted on capture and reversed on refund.
+    'platform_fee_bps' => (int) env('COMMERCE_PLATFORM_FEE_BPS', 1000),
+
     // Largest single order in minor units (fraud exposure per tap).
     'max_order_minor' => (int) env('COMMERCE_MAX_ORDER_MINOR', 500_000),
 

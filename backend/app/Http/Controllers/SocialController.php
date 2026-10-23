@@ -32,6 +32,16 @@ final class SocialController extends Controller
         return new JsonResponse(['data' => $this->social->block($request->user(), $user)]);
     }
 
+    public function follow(Request $request, string $user): JsonResponse
+    {
+        return new JsonResponse(['data' => $this->social->follow($request->user(), $user)], 201);
+    }
+
+    public function unfollow(Request $request, string $user): JsonResponse
+    {
+        return new JsonResponse(['data' => $this->social->unfollow($request->user(), $user)]);
+    }
+
     public function unblock(Request $request, string $user): JsonResponse
     {
         $this->social->unblock($request->user(), $user);
