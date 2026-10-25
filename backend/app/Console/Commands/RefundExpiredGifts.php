@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Console\Concerns\SkipsWhenPurchasesDisabled;
 use App\Services\Payments\OrderPayments;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -11,12 +12,17 @@ use Throwable;
 
 final class RefundExpiredGifts extends Command
 {
+    use SkipsWhenPurchasesDisabled;
+
     protected $signature = 'gifts:refund-expired {--limit=200}';
 
     protected $description = 'Refund paid gifts nobody claimed before the link expired';
 
     public function handle(OrderPayments $payments): int
     {
+        if ($this->purchasesAreOff()) {
+            return self::SUCCESS;
+        }
         $expired = DB::table('gifts as g')
             ->join('orders as o', 'o.id', '=', 'g.order_id')
             ->where('g.status', 'paid')

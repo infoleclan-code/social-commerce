@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Console\Concerns\SkipsWhenPurchasesDisabled;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -14,12 +15,17 @@ use Illuminate\Support\Str;
  */
 final class RotateDrops extends Command
 {
+    use SkipsWhenPurchasesDisabled;
+
     protected $signature = 'drops:rotate';
 
     protected $description = 'Start the next flash drop and drop hour when none is live';
 
     public function handle(): int
     {
+        if ($this->purchasesAreOff()) {
+            return self::SUCCESS;
+        }
         if (! (bool) config('commerce.flash_drops.enabled')) {
             $this->info('Flash drops are disabled.');
 

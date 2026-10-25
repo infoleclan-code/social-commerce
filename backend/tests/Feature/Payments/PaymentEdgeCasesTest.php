@@ -19,6 +19,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
+use PHPUnit\Framework\Attributes\Group;
 use Tests\Support\BuildsCommerce;
 use Tests\Support\BuildsSocial;
 use Tests\TestCase;
@@ -27,6 +28,7 @@ use Tests\TestCase;
  * The branches that only bad luck reaches: Stripe failing mid-capture, mid-cancel and mid-refund,
  * intents that do not match, compensations, referral commission budgets, and invalid identifiers.
  */
+#[Group('purchases')]
 final class PaymentEdgeCasesTest extends TestCase
 {
     use BuildsCommerce;

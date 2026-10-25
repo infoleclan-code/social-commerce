@@ -43,9 +43,13 @@ final class CompareService
             throw ApiException::offerExpired();
         }
 
-        $url = $this->affiliate($offer['url']);
+        $merchant = StoreUrl::merchant((string) $offer['url']);
+        if ($merchant === null) {
+            throw ApiException::offerExpired();
+        }
+        $url = $this->affiliate($merchant);
         $host = strtolower((string) parse_url($url, PHP_URL_HOST));
-        if ($host === '' || parse_url($url, PHP_URL_SCHEME) !== 'https') {
+        if ($host === '') {
             throw ApiException::offerExpired();
         }
 
@@ -165,18 +169,25 @@ final class CompareService
     /** @param  array<string, mixed>  $raw */
     private function normalize(array $raw, string $currency, string $checkedAt): ?array
     {
-        $url = (string) ($raw['url'] ?? '');
+        $url = StoreUrl::merchant((string) ($raw['url'] ?? ''));
         $store = trim((string) ($raw['store'] ?? ''));
-        if ($store === '' || ! str_starts_with($url, 'https://') || ! is_numeric($raw['price_minor'] ?? null)) {
+        if ($store === '' || $url === null || ! is_numeric($raw['price_minor'] ?? null)) {
             return null;
         }
 
         $from = strtoupper((string) ($raw['currency'] ?? 'USD'));
         $price = $this->convert((int) $raw['price_minor'], $from, $currency);
+        if ($price === null) {
+            return null;
+        }
         $known = (bool) ($raw['shipping_known'] ?? false);
-        $shipping = $known && is_numeric($raw['shipping_minor'] ?? null)
-            ? $this->convert((int) $raw['shipping_minor'], $from, $currency)
-            : null;
+        $shipping = null;
+        if ($known && is_numeric($raw['shipping_minor'] ?? null)) {
+            $shipping = $this->convert((int) $raw['shipping_minor'], $from, $currency);
+            if ($shipping === null) {
+                return null;
+            }
+        }
         $total = $known && $shipping !== null ? $price + $shipping : $price;
         $id = substr(hash('sha256', implode('|', [
             strtolower($store),
@@ -202,7 +213,7 @@ final class CompareService
             'availability' => ($raw['availability'] ?? '') === 'out_of_stock' ? 'out_of_stock' : 'in_stock',
             'checked_at' => $checkedAt,
             'url' => $url,
-            'rank' => $known ? $total : $price + 1_000_000_000,
+            'rank' => $known ? $total : $price,
         ];
     }
 
@@ -295,11 +306,15 @@ final class CompareService
         return $url.(str_contains($url, '?') ? '&' : '?').rawurlencode($param).'='.rawurlencode($id);
     }
 
-    private function convert(int $minor, string $from, string $to): int
+    /** Null when the pair is not in the rate table, so the amount is not relabeled. */
+    private function convert(int $minor, string $from, string $to): ?int
     {
-        $rates = config('compare.rates');
-        if (! is_array($rates) || ! isset($rates[$from], $rates[$to]) || $from === $to) {
+        if ($from === $to) {
             return $minor;
+        }
+        $rates = config('compare.rates');
+        if (! is_array($rates) || ! isset($rates[$from], $rates[$to])) {
+            return null;
         }
 
         $usd = (int) round($minor * 1_000_000 / (int) $rates[$from]);

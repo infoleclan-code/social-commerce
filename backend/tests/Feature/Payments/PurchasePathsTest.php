@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
+use PHPUnit\Framework\Attributes\Group;
 use Tests\Support\BuildsCommerce;
 use Tests\Support\BuildsSocial;
 use Tests\TestCase;
@@ -19,6 +20,7 @@ use Tests\TestCase;
  * Squads, gifts, blind boxes, withdrawals and saved cards: every one is a real card payment now, and
  * none of them can produce a "paid" order without a captured PaymentIntent.
  */
+#[Group('purchases')]
 final class PurchasePathsTest extends TestCase
 {
     use BuildsCommerce;

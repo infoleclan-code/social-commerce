@@ -12,6 +12,7 @@ use Illuminate\Support\Str;
 use InvalidArgumentException;
 use LogicException;
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Group;
 use Tests\Support\BuildsCommerce;
 use Tests\Support\BuildsSocial;
 use Tests\TestCase;
@@ -20,6 +21,7 @@ use Tests\TestCase;
  * LedgerService and the database rules behind it: every invalid posting is refused before or at
  * commit, every valid one is applied once, and balances always equal the sum of the lines.
  */
+#[Group('purchases')]
 final class LedgerServiceTest extends TestCase
 {
     use BuildsCommerce;

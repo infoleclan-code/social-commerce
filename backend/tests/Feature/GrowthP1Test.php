@@ -9,6 +9,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
+use PHPUnit\Framework\Attributes\Group;
 use Tests\Support\BuildsSocial;
 use Tests\TestCase;
 
@@ -30,6 +31,7 @@ final class GrowthP1Test extends TestCase
         $this->assertLessThan(array_search($beauty, $ids, true), array_search($street, $ids, true));
     }
 
+    #[Group('purchases')]
     public function test_landed_price_includes_shipping_vat_and_duty_before_purchase(): void
     {
         $quote = LandedCost::quote((object) [
@@ -49,6 +51,7 @@ final class GrowthP1Test extends TestCase
         $this->assertNotEmpty($quote['delivers_on']);
     }
 
+    #[Group('purchases')]
     public function test_unverified_seller_cannot_sync_a_catalogue(): void
     {
         $seller = $this->makeUser();

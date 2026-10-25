@@ -16,4 +16,12 @@ abstract class TestCase extends BaseTestCase
 
         return $app;
     }
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        if (! config('commerce.purchases_enabled') && in_array('purchases', $this->groups(), true)) {
+            $this->markTestSkipped('In-app purchases are off.');
+        }
+    }
 }

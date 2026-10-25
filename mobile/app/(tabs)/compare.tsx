@@ -1,8 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import * as Linking from 'expo-linking';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Linking, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ApiError } from '@/api/client';
@@ -62,6 +61,16 @@ export default function CompareScreen() {
     }
   }
 
+  async function removeSaved(id: string) {
+    setNote(null);
+    try {
+      await removeWishlist(id);
+      await queryClient.invalidateQueries({ queryKey: ['wishlist'] });
+    } catch (error) {
+      setNote(problem(error));
+    }
+  }
+
   const products = results.data?.data.products ?? [];
 
   return (
@@ -74,23 +83,21 @@ export default function CompareScreen() {
         <TextInput accessibilityLabel={t('compare.size')} onChangeText={setSize} placeholder={t('compare.size')} placeholderTextColor={palette.faint} style={[field, { flex: 1 }]} value={size} />
       </View>
       <View style={{ flexDirection: 'row', gap: 8 }}>
-        <TextInput accessibilityLabel={t('compare.min')} keyboardType="number-pad" onChangeText={setMin} placeholder={t('compare.min')} placeholderTextColor={palette.faint} style={[field, { flex: 1 }]} value={min} />
-        <TextInput accessibilityLabel={t('compare.max')} keyboardType="number-pad" onChangeText={setMax} placeholder={t('compare.max')} placeholderTextColor={palette.faint} style={[field, { flex: 1 }]} value={max} />
+        <TextInput accessibilityLabel={t('compare.min')} keyboardType="decimal-pad" onChangeText={setMin} placeholder={t('compare.min')} placeholderTextColor={palette.faint} style={[field, { flex: 1 }]} value={min} />
+        <TextInput accessibilityLabel={t('compare.max')} keyboardType="decimal-pad" onChangeText={setMax} placeholder={t('compare.max')} placeholderTextColor={palette.faint} style={[field, { flex: 1 }]} value={max} />
       </View>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         <Pressable accessibilityRole="button" onPress={() => setInStock((current) => !current)} style={pill}>
           <Text style={pillText}>{inStock ? t('compare.inStock') : t('compare.includeUnavailable')}</Text>
         </Pressable>
         <Pressable accessibilityRole="button" onPress={() => setSort((current) => (current === 'total_asc' ? 'total_desc' : current === 'total_desc' ? 'price_asc' : 'total_asc'))} style={pill}>
-          <Text style={pillText}>{t('compare.sort')}</Text>
+          <Text style={pillText}>{sortLabel(sort)}</Text>
         </Pressable>
         <Pressable accessibilityRole="button" onPress={() => { setNote(null); setSubmitted(text.trim()); }} style={button}>
           <Text style={buttonText}>{t('compare.searchAction')}</Text>
         </Pressable>
       </View>
-      <Pressable accessibilityRole="button" onPress={() => router.push('/scan')}>
-        <Text style={{ color: palette.goldSoft, fontWeight: '700' }}>{t('compare.photo')}</Text>
-      </Pressable>
+      {results.isFetching ? <Text style={{ color: palette.muted }}>{t('compare.loading')}</Text> : null}
       {results.isError ? <Text style={{ color: palette.goldSoft }}>{problem(results.error)}</Text> : null}
       {products.map((product) => (
         <View key={`${product.brand}-${product.model}-${product.size ?? ''}`} style={{ gap: 8 }}>
@@ -105,7 +112,7 @@ export default function CompareScreen() {
                   ? t('compare.shipping', { amount: formatMoney({ amount_minor: offer.shipping_minor, currency: offer.currency, minor_unit: 2 }) })
                   : t('compare.shippingUnknown')}
               </Text>
-              <Text style={{ color: palette.muted }}>{t('compare.checked', { time: offer.checked_at })}</Text>
+              <Text style={{ color: palette.muted }}>{t('compare.checked', { time: checkedAt(offer.checked_at) })}</Text>
               <Pressable accessibilityRole="link" onPress={() => void visit(offer)}>
                 <Text style={{ color: palette.ivory, fontWeight: '700' }}>{t('compare.openStore')}</Text>
               </Pressable>
@@ -124,7 +131,7 @@ export default function CompareScreen() {
       {(saved.data?.data ?? []).map((item) => (
         <View key={item.id} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
           <Text style={{ color: palette.ivory, flex: 1 }}>{item.query}{item.best_total_minor !== null ? ` · ${formatMoney({ amount_minor: item.best_total_minor, currency: item.currency, minor_unit: 2 })}` : ''}</Text>
-          <Pressable accessibilityRole="button" onPress={() => void removeWishlist(item.id).then(() => queryClient.invalidateQueries({ queryKey: ['wishlist'] }))}>
+          <Pressable accessibilityRole="button" onPress={() => void removeSaved(item.id)}>
             <Text style={{ color: palette.goldSoft }}>{t('compare.remove')}</Text>
           </Pressable>
         </View>
@@ -145,6 +152,20 @@ function problem(error: unknown): string {
     if (error.code === 'RATE_LIMITED') return t('compare.slow');
   }
   return t('compare.failed');
+}
+
+function sortLabel(sort: string): string {
+  if (sort === 'total_desc') return t('compare.sortHigh');
+  if (sort === 'price_asc') return t('compare.sortPrice');
+  return t('compare.sortLow');
+}
+
+function checkedAt(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return iso;
+  }
+  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(date);
 }
 
 const field = { color: palette.ivory, borderColor: palette.line, borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12 };

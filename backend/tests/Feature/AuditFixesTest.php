@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
+use PHPUnit\Framework\Attributes\Group;
 use Tests\Support\BuildsCommerce;
 use Tests\Support\BuildsSocial;
 use Tests\TestCase;
@@ -25,6 +26,7 @@ final class AuditFixesTest extends TestCase
     use BuildsSocial;
     use RefreshDatabase;
 
+    #[Group('purchases')]
     public function test_an_unpaid_squad_join_does_not_unlock_the_price(): void
     {
         $host = $this->makeUser();
@@ -54,6 +56,7 @@ final class AuditFixesTest extends TestCase
         $this->postJson('/api/v1/squads/'.$squad.'/settle')->assertNotFound();
     }
 
+    #[Group('purchases')]
     public function test_checkout_and_one_tap_charge_the_landed_total_the_buyer_was_shown(): void
     {
         $buyer = $this->makeUser(['country_code' => 'DE']);
@@ -89,6 +92,7 @@ final class AuditFixesTest extends TestCase
         ], $this->key('cart'))->assertCreated()->assertJsonPath('data.total.amount_minor', 13_960);
     }
 
+    #[Group('purchases')]
     public function test_a_live_auction_is_not_created_by_reading_and_a_bid_holds_a_card(): void
     {
         $buyer = $this->makeUser();
@@ -126,6 +130,7 @@ final class AuditFixesTest extends TestCase
         $this->getJson('/api/v1/auctions/live')->assertOk()->assertJsonPath('data.auction.id', $auction);
     }
 
+    #[Group('purchases')]
     public function test_opening_a_loot_box_twice_with_one_key_debits_once(): void
     {
         $user = $this->makeUser();
@@ -138,6 +143,7 @@ final class AuditFixesTest extends TestCase
         $this->assertSame(1, DB::table('coupons')->where('user_id', $user->id)->count());
     }
 
+    #[Group('purchases')]
     public function test_the_catalog_is_private_and_skips_unverified_or_unlisted_products(): void
     {
         $this->getJson('/api/v1/catalog/feed')->assertUnauthorized();
@@ -163,6 +169,7 @@ final class AuditFixesTest extends TestCase
         $this->assertCount(2, $ids);
     }
 
+    #[Group('purchases')]
     public function test_a_store_hides_products_that_were_only_tagged_on_a_friends_reel(): void
     {
         $author = $this->makeUser();
@@ -189,6 +196,7 @@ final class AuditFixesTest extends TestCase
         $this->getJson('/api/v1/users/'.$author->id.'/store')->assertOk()->assertJsonPath('data.0.id', $product);
     }
 
+    #[Group('purchases')]
     public function test_a_gift_address_is_encrypted_and_the_claimer_can_retry(): void
     {
         $buyer = $this->makeUser();
@@ -274,6 +282,7 @@ final class AuditFixesTest extends TestCase
         $this->getJson('/api/v1/users/'.$ada->id)->assertNotFound();
     }
 
+    #[Group('purchases')]
     public function test_cart_checkout_uses_an_address_and_the_seller_can_add_tracking(): void
     {
         $seller = $this->verifiedSeller();
@@ -354,6 +363,7 @@ final class AuditFixesTest extends TestCase
         $this->assertSame(0, DB::table('user_devices')->where('user_id', $user->id)->count());
     }
 
+    #[Group('purchases')]
     public function test_a_refund_reverses_the_platform_fee(): void
     {
         $buyer = $this->makeUser();

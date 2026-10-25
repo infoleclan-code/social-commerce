@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 
 import { ApiError, api, json } from '@/api/client';
+import { purchasesEnabled } from '@/lib/flags';
 import { goBackOrTabs } from '@/lib/go-back';
 import { t } from '@/lib/i18n';
 import { palette } from '@/theme/tokens';
@@ -15,7 +16,15 @@ type Thread = {
   questions: { id: string; body: string; asker: string; answer: { body: string; owner: string; verified_purchase: boolean } | null }[];
 };
 
-export default function ProductScreen() {
+export default function ProductRoute() {
+  if (!purchasesEnabled) {
+    return <Redirect href="/compare" />;
+  }
+
+  return <ProductScreen />;
+}
+
+function ProductScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const productId = typeof id === 'string' ? id : '';

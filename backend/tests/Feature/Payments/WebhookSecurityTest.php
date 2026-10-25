@@ -10,6 +10,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
+use PHPUnit\Framework\Attributes\Group;
 use Tests\Support\BuildsCommerce;
 use Tests\Support\BuildsSocial;
 use Tests\TestCase;
@@ -18,6 +19,7 @@ use Tests\TestCase;
  * Attacks on and accidents around the Stripe webhook: forgery, replay, tampering, oversized bodies,
  * events from the wrong mode, events that do not match our records, duplicates and reordering.
  */
+#[Group('purchases')]
 final class WebhookSecurityTest extends TestCase
 {
     use BuildsCommerce;

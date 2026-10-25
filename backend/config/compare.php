@@ -11,7 +11,7 @@ return [
     'provider' => env('COMPARE_PROVIDER', 'fake'),
     'serpapi_key' => env('SERPAPI_API_KEY', ''),
     'cache_ttl' => (int) env('COMPARE_CACHE_TTL', 600),
-    'timeout_seconds' => (int) env('COMPARE_TIMEOUT', 4),
+    'timeout_seconds' => (int) env('COMPARE_TIMEOUT', 12),
 
     /*
      * Appended to the outbound store URL when both are set. The stored click row

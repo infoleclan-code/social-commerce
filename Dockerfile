@@ -1,18 +1,27 @@
-FROM php:8.3-cli-bookworm
+FROM php:8.3-fpm-bookworm
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends git unzip libpq-dev libzip-dev \
+    && apt-get install -y --no-install-recommends \
+        git unzip curl nginx libpq-dev libzip-dev postgresql-client \
     && docker-php-ext-install pdo_pgsql pgsql \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -f /etc/nginx/sites-enabled/default
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www/backend
 COPY backend/ /var/www/backend
+COPY deploy/nginx.conf /etc/nginx/sites-enabled/app.conf
+COPY deploy/php-fpm-env.conf /usr/local/etc/php-fpm.d/zz-env.conf
+COPY deploy/web-serve.sh /usr/local/bin/web-serve
 
-RUN composer install --no-dev --no-interaction --prefer-dist --no-progress \
+RUN chmod +x /usr/local/bin/web-serve \
+    && composer install --no-dev --no-interaction --prefer-dist --no-progress \
     && mkdir -p storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs bootstrap/cache storage/app/backups \
+    && chown -R www-data:www-data storage bootstrap/cache \
     && chmod -R ug+rwx storage bootstrap/cache
 
-EXPOSE 8000
-CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]
+EXPOSE 80
+# The official image entrypoint only forwards the command. Compose overrides this
+# CMD for the scheduler and the queue worker, which do not start nginx.
+CMD ["web-serve"]

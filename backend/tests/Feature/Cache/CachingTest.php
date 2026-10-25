@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
+use PHPUnit\Framework\Attributes\Group;
 use RuntimeException;
 use Tests\Support\BuildsCommerce;
 use Tests\Support\BuildsSocial;
@@ -86,6 +87,7 @@ final class CachingTest extends TestCase
         $this->assertContains($ids[0], array_column(app(ForYouCandidates::class)->globalPool(), 'id'), 'The pool was not flushed: hydration filtered it.');
     }
 
+    #[Group('purchases')]
     public function test_offers_are_cached_per_country_and_a_seller_price_change_is_seen_at_once(): void
     {
         $gtin = ['canonical_key' => 'gtin:4006381333931'];
@@ -112,6 +114,7 @@ final class CachingTest extends TestCase
         $this->getJson('/api/v1/products/not-a-uuid/offers')->assertStatus(404);
     }
 
+    #[Group('purchases')]
     public function test_checkout_ignores_a_stale_cached_price(): void
     {
         $buyer = $this->makeUser();
@@ -128,6 +131,7 @@ final class CachingTest extends TestCase
             ->assertCreated()->assertJsonPath('data.total.amount_minor', 6_000);
     }
 
+    #[Group('purchases')]
     public function test_the_product_graph_links_same_product_co_tagged_and_co_bought(): void
     {
         $gtin = ['canonical_key' => 'gtin:4006381333931'];

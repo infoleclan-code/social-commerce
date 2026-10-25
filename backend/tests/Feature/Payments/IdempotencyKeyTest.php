@@ -13,11 +13,13 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Group;
 use Tests\Support\BuildsCommerce;
 use Tests\Support\BuildsSocial;
 use Tests\TestCase;
 
 /** The Idempotency-Key contract on every route that moves money or reserves stock. */
+#[Group('purchases')]
 final class IdempotencyKeyTest extends TestCase
 {
     use BuildsCommerce;

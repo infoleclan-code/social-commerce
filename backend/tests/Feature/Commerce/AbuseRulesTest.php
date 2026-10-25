@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use LogicException;
+use PHPUnit\Framework\Attributes\Group;
 use Tests\Support\BuildsCommerce;
 use Tests\Support\BuildsSocial;
 use Tests\TestCase;
@@ -25,6 +26,7 @@ final class AbuseRulesTest extends TestCase
     use BuildsSocial;
     use RefreshDatabase;
 
+    #[Group('purchases')]
     public function test_a_client_cannot_start_a_flash_drop_only_the_scheduler_can(): void
     {
         $this->catalogProduct(5_000);
@@ -124,11 +126,20 @@ final class AbuseRulesTest extends TestCase
     public function test_every_money_job_is_scheduled(): void
     {
         $commands = collect(app(Schedule::class)->events())->map(fn ($event): string => (string) $event->command)->implode("\n");
-        foreach (['payments:capture-due', 'payments:reconcile', 'ledger:release-commissions', 'price-protection:sweep', 'gifts:refund-expired', 'drops:rotate', 'idempotency:prune', 'ledger:verify'] as $job) {
+        $money = ['payments:capture-due', 'payments:reconcile', 'ledger:release-commissions', 'price-protection:sweep', 'gifts:refund-expired', 'drops:rotate'];
+        foreach (['idempotency:prune', 'ledger:verify', 'prices:check-alerts', 'db:backup'] as $job) {
             $this->assertStringContainsString($job, $commands);
+        }
+        foreach ($money as $job) {
+            if (config('commerce.purchases_enabled')) {
+                $this->assertStringContainsString($job, $commands);
+            } else {
+                $this->assertStringNotContainsString($job, $commands);
+            }
         }
     }
 
+    #[Group('purchases')]
     public function test_the_release_job_pays_kept_orders_and_the_ledger_verifies(): void
     {
         $creator = $this->makeUser();
@@ -147,6 +158,7 @@ final class AbuseRulesTest extends TestCase
         $this->assertSame(0, Artisan::call('ledger:verify'));
     }
 
+    #[Group('purchases')]
     public function test_capture_and_reconcile_commands_run_end_to_end(): void
     {
         $buyer = $this->makeUser();

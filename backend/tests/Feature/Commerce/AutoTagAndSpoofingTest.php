@@ -15,6 +15,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
+use PHPUnit\Framework\Attributes\Group;
 use Tests\Support\BuildsCommerce;
 use Tests\Support\BuildsSocial;
 use Tests\Support\HostileImages;
@@ -30,6 +31,7 @@ final class AutoTagAndSpoofingTest extends TestCase
     use BuildsSocial;
     use RefreshDatabase;
 
+    #[Group('purchases')]
     public function test_an_unambiguous_match_attaches_and_repeating_it_is_idempotent(): void
     {
         $frame = $this->reelImage(31);
@@ -48,6 +50,7 @@ final class AutoTagAndSpoofingTest extends TestCase
         $this->assertSame(1, DB::table('product_tag_suggestions')->where('post_id', $post)->where('product_id', $match)->count());
     }
 
+    #[Group('purchases')]
     public function test_two_equally_good_listings_are_only_suggested(): void
     {
         $frame = $this->reelImage(33);
@@ -80,6 +83,7 @@ final class AutoTagAndSpoofingTest extends TestCase
         $this->assertSame(0, DB::table('reel_product_tags')->count());
     }
 
+    #[Group('purchases')]
     public function test_a_copied_photo_for_a_different_product_is_flagged_and_hidden_everywhere(): void
     {
         $photo = $this->reelImage(41);
@@ -106,6 +110,7 @@ final class AutoTagAndSpoofingTest extends TestCase
         $this->postJson('/api/v1/checkout/one-tap', ['product_id' => $copy], $this->key('spoof'))->assertStatus(409)->assertJsonPath('code', 'OUT_OF_STOCK');
     }
 
+    #[Group('purchases')]
     public function test_offers_of_the_same_gtin_may_share_the_makers_photo(): void
     {
         $photo = $this->reelImage(42);
@@ -117,6 +122,7 @@ final class AutoTagAndSpoofingTest extends TestCase
         $this->assertSame(0, DB::table('listing_flags')->count());
     }
 
+    #[Group('purchases')]
     public function test_a_seller_losing_verification_disappears_from_search(): void
     {
         $photo = $this->reelImage(43);
@@ -131,6 +137,7 @@ final class AutoTagAndSpoofingTest extends TestCase
         $this->assertCount(1, app(VectorStore::class)->nearest(VisualEmbedding::fromBytes($photo), 10));
     }
 
+    #[Group('purchases')]
     public function test_catalog_sync_validates_urls_gtins_and_currency_and_indexes_off_the_request(): void
     {
         $seller = $this->verifiedSeller();
@@ -175,6 +182,7 @@ final class AutoTagAndSpoofingTest extends TestCase
         $this->assertSame('USD', DB::table('products')->where('id', $jacket->id)->value('currency'));
     }
 
+    #[Group('purchases')]
     public function test_unverified_sellers_cannot_list_and_their_rows_are_never_searchable(): void
     {
         $pending = $this->makeUser();

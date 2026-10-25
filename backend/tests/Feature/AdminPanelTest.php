@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
+use PHPUnit\Framework\Attributes\Group;
 use Tests\Support\BuildsCommerce;
 use Tests\Support\BuildsSocial;
 use Tests\TestCase;
@@ -40,14 +41,14 @@ final class AdminPanelTest extends TestCase
             'email' => 'member@example.com',
             'password' => 'correct-horse',
         ])->assertOk()->json('data.token');
-        $this->withToken($memberToken)->getJson('/api/v1/admin/auctions')->assertForbidden()->assertJsonPath('code', 'ADMIN_REQUIRED');
+        $this->withToken($memberToken)->getJson('/api/v1/admin/posts')->assertForbidden()->assertJsonPath('code', 'ADMIN_REQUIRED');
 
         $this->app['auth']->forgetGuards();
         $mobile = (string) $this->postJson('/api/v1/auth/login', [
             'email' => 'admin@example.com',
             'password' => 'correct-horse',
         ])->assertOk()->json('data.token');
-        $this->withToken($mobile)->getJson('/api/v1/admin/auctions')->assertForbidden();
+        $this->withToken($mobile)->getJson('/api/v1/admin/posts')->assertForbidden();
 
         $this->postJson('/api/v1/admin/login', [
             'email' => 'admin@example.com',
@@ -58,10 +59,20 @@ final class AdminPanelTest extends TestCase
         $this->app['auth']->forgetGuards();
         $token = $this->adminToken();
         $this->app['auth']->forgetGuards();
-        $this->withToken($token)->getJson('/api/v1/admin/auctions')->assertOk()->assertJsonPath('data', []);
+        $this->withToken($token)->getJson('/api/v1/admin/posts')->assertOk();
         $this->assertSame(UserRole::Admin, $admin->role);
     }
 
+    public function test_admin_moderation_is_throttled(): void
+    {
+        $token = $this->adminToken();
+        for ($attempt = 0; $attempt < 60; $attempt++) {
+            $this->withToken($token)->getJson('/api/v1/admin/users')->assertOk();
+        }
+        $this->withToken($token)->getJson('/api/v1/admin/users')->assertStatus(429)->assertJsonPath('code', 'RATE_LIMITED');
+    }
+
+    #[Group('purchases')]
     public function test_an_admin_can_schedule_and_end_an_auction(): void
     {
         $product = $this->catalogProduct(5_000);
@@ -86,6 +97,7 @@ final class AdminPanelTest extends TestCase
         $this->getJson('/api/v1/auctions/live')->assertOk()->assertJsonPath('data.auction', null);
     }
 
+    #[Group('purchases')]
     public function test_listing_status_and_seller_verification_are_staff_actions(): void
     {
         $product = $this->catalogProduct(2_000, ['title' => 'Staff coat']);

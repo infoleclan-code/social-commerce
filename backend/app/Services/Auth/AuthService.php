@@ -77,26 +77,28 @@ final class AuthService
      */
     public function loginAdmin(string $email, string $password, string $otp): array
     {
-        $user = User::query()->whereRaw('email = ?', [$email])->first();
-        $passwordOk = $this->passwordMatches($user, $password);
-        $code = trim($otp);
-        $step = Totp::matchedStep($this->totpSecret($user), $code);
-        $demoOk = $this->demoOtpOk($user, $code);
-        $replay = $user !== null && $step !== null && $user->totp_last_step !== null && $step <= (int) $user->totp_last_step;
-        $eligible = $user !== null
-            && $passwordOk
-            && $user->role === UserRole::Admin
-            && $user->anonymized_at === null
-            && $user->deleted_at === null
-            && $user->risk_status !== RiskStatus::Banned;
-        if (! $eligible || $replay || ($step === null && ! $demoOk)) {
-            throw ApiException::authFailed();
-        }
-        if ($step !== null) {
-            $user->forceFill(['totp_last_step' => $step])->save();
-        }
+        return DB::transaction(function () use ($email, $password, $otp): array {
+            $user = User::query()->whereRaw('email = ?', [$email])->lockForUpdate()->first();
+            $passwordOk = $this->passwordMatches($user, $password);
+            $code = trim($otp);
+            $step = Totp::matchedStep($this->totpSecret($user), $code);
+            $demoOk = $this->demoOtpOk($user, $code);
+            $replay = $user !== null && $step !== null && $user->totp_last_step !== null && $step <= (int) $user->totp_last_step;
+            $eligible = $user !== null
+                && $passwordOk
+                && $user->role === UserRole::Admin
+                && $user->anonymized_at === null
+                && $user->deleted_at === null
+                && $user->risk_status !== RiskStatus::Banned;
+            if (! $eligible || $replay || ($step === null && ! $demoOk)) {
+                throw ApiException::authFailed();
+            }
+            if ($step !== null) {
+                $user->forceFill(['totp_last_step' => $step])->save();
+            }
 
-        return $this->issue($user, 'admin', ['admin']);
+            return $this->issue($user, 'admin', ['admin']);
+        });
     }
 
     public function logout(User $user, ?string $deviceId = null): void

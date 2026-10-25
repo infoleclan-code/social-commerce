@@ -46,6 +46,19 @@ jobs:
         run: |
           export APP_KEY="base64:$(php -r 'echo base64_encode(random_bytes(32));')"
           php vendor/bin/phpunit --do-not-cache-result
+      - name: PHPUnit with in-app purchases off
+        working-directory: backend
+        env:
+          DB_CONNECTION: pgsql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 5432
+          DB_DATABASE: social_test
+          DB_USERNAME: root
+          DB_PASSWORD: root
+          COMMERCE_PURCHASES: "false"
+        run: |
+          export APP_KEY="base64:$(php -r 'echo base64_encode(random_bytes(32));')"
+          php vendor/bin/phpunit --do-not-cache-result
 
   mobile:
     runs-on: ubuntu-latest

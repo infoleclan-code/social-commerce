@@ -142,6 +142,7 @@ class AppServiceProvider extends ServiceProvider
             Limit::perMinute(10)->by('email:'.$emailKey($request))->response($limited),
         ]);
         RateLimiter::for('admin-login', fn (Request $request) => Limit::perMinute(5)->by('admin:'.self::hmac((string) $request->ip()).':'.$emailKey($request))->response($limited));
+        RateLimiter::for('admin-moderate', fn (Request $request) => Limit::perMinute(60)->by('moderate:'.$key($request))->response($limited));
         RateLimiter::for('devices', fn (Request $request) => Limit::perMinute(10)->by('device:'.$key($request))->response($limited));
         RateLimiter::for('export', fn (Request $request) => Limit::perHour(3)->by('export:'.$key($request))->response($limited));
         RateLimiter::for('delete-account', fn (Request $request) => Limit::perHour(3)->by('delete:'.$key($request))->response($limited));

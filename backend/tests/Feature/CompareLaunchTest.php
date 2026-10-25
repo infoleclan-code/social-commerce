@@ -5,13 +5,16 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Mail\PriceDropAlert;
+use App\Services\Commerce\CartService;
 use App\Services\Compare\CompareService;
 use App\Services\Compare\OfferProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use RuntimeException;
 use Tests\Support\BuildsCommerce;
@@ -200,16 +203,20 @@ final class CompareLaunchTest extends TestCase
     public function test_deleting_an_address_referenced_by_an_order_clears_the_foreign_key(): void
     {
         $buyer = $this->makeUser();
-        Sanctum::actingAs($buyer);
-        $address = (string) $this->postJson('/api/v1/addresses', [
-            'line' => '12 Rustaveli Ave',
-            'locality' => 'Tbilisi',
-            'postal_code' => '0108',
+        $address = (string) Str::uuid7();
+        DB::table('shipping_addresses')->insert([
+            'id' => $address,
+            'user_id' => $buyer->id,
             'country' => 'GE',
-        ])->assertCreated()->json('data.id');
+            'address_ciphertext' => Crypt::encryptString('{"line":"12 Rustaveli Ave"}'),
+            'is_default' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
         $order = $this->capturedOrder($buyer, $this->catalogProduct(), 2_000, ['shipping_address_id' => $address]);
 
-        $this->deleteJson('/api/v1/addresses/'.$address)->assertNoContent();
+        app(CartService::class)->deleteAddress($buyer, $address);
+
         $this->assertNull(DB::table('orders')->where('id', $order)->value('shipping_address_id'));
         $this->assertSame(0, DB::table('shipping_addresses')->where('id', $address)->count());
     }
@@ -225,6 +232,87 @@ final class CompareLaunchTest extends TestCase
         $this->postJson('/api/v1/rewards/loot-box', [])->assertNotFound();
         $this->getJson('/api/v1/admin/auctions')->assertNotFound();
         $this->postJson('/api/v1/stripe/webhook', [])->assertNotFound();
+        $this->getJson('/api/v1/cards/squad/'.Str::uuid7())->assertNotFound();
+        $this->getJson('/api/v1/cards/auction/'.Str::uuid7())->assertNotFound();
+        $this->getJson('/api/v1/cards/gift/not-a-real-token')->assertNotFound();
+    }
+
+    public function test_payment_commands_do_nothing_when_purchases_are_off(): void
+    {
+        config(['commerce.purchases_enabled' => false]);
+        foreach (['payments:capture-due', 'payments:reconcile', 'ledger:release-commissions', 'price-protection:sweep', 'gifts:refund-expired', 'drops:rotate'] as $command) {
+            $this->artisan($command)->assertSuccessful()->expectsOutputToContain('In-app purchases are off.');
+        }
+    }
+
+    public function test_unknown_shipping_ranks_by_item_price_and_a_missing_rate_is_not_relabeled(): void
+    {
+        $this->app->instance(OfferProvider::class, new class implements OfferProvider
+        {
+            public function search(string $query): array
+            {
+                return [
+                    [
+                        'store' => 'Known Mart',
+                        'title' => 'Nike Dunk Low',
+                        'url' => 'https://known.example/dunk',
+                        'brand' => 'Nike',
+                        'model' => 'Dunk Low',
+                        'size' => '10',
+                        'price_minor' => 12_000,
+                        'shipping_minor' => 0,
+                        'shipping_known' => true,
+                        'currency' => 'USD',
+                        'availability' => 'in_stock',
+                    ],
+                    [
+                        'store' => 'Unknown Mart',
+                        'title' => 'Nike Dunk Low',
+                        'url' => 'https://unknown.example/dunk',
+                        'brand' => 'Nike',
+                        'model' => 'Dunk Low',
+                        'size' => '10',
+                        'price_minor' => 10_000,
+                        'shipping_minor' => null,
+                        'shipping_known' => false,
+                        'currency' => 'USD',
+                        'availability' => 'in_stock',
+                    ],
+                    [
+                        'store' => 'Yen Mart',
+                        'title' => 'Nike Dunk Low',
+                        'url' => 'https://yen.example/dunk',
+                        'brand' => 'Nike',
+                        'model' => 'Dunk Low',
+                        'size' => '10',
+                        'price_minor' => 9_000,
+                        'shipping_minor' => 0,
+                        'shipping_known' => true,
+                        'currency' => 'JPY',
+                        'availability' => 'in_stock',
+                    ],
+                    [
+                        'store' => 'Api Mart',
+                        'title' => 'Nike Dunk Low',
+                        'url' => 'https://serpapi.com/search',
+                        'brand' => 'Nike',
+                        'model' => 'Dunk Low',
+                        'size' => '10',
+                        'price_minor' => 1_000,
+                        'shipping_minor' => 0,
+                        'shipping_known' => true,
+                        'currency' => 'USD',
+                        'availability' => 'in_stock',
+                    ],
+                ];
+            }
+        });
+        Sanctum::actingAs($this->makeUser());
+        $offers = $this->getJson('/api/v1/compare?q=nike%20sneakers&currency=EUR')->assertOk()->json('data.products.0.offers');
+        $this->assertSame(['Unknown Mart', 'Known Mart'], array_column($offers, 'store'));
+        $this->assertFalse($offers[0]['shipping_known']);
+        $this->assertSame('EUR', $offers[0]['currency']);
+        $this->assertSame('EUR', $this->getJson('/api/v1/compare?q=nike%20sneakers&currency=EUR')->json('data.currency'));
     }
 
     public function test_a_wishlist_emails_when_the_best_price_drops(): void

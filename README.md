@@ -27,8 +27,16 @@ provider error is `503 COMPARE_UNAVAILABLE` rather than a stale hit.
 
 `COMPARE_PROVIDER=fake` (the default in `.env.example`) returns a deterministic catalog for local
 development and tests. `COMPARE_PROVIDER=serpapi` calls [SerpAPI Google Shopping](https://serpapi.com/google-shopping-api)
-(`engine=google_shopping`) with `SERPAPI_API_KEY`. If that provider is selected and the key is empty,
-search returns 503. It does not silently switch to the fake catalog.
+(`engine=google_shopping`) with `SERPAPI_API_KEY`, then [Google Immersive Product](https://serpapi.com/google-immersive-product-api)
+for each candidate’s sellers. A shopping row has no merchant link. Brand, size, and the store URL
+come from the immersive product. A successful response that maps to no sellers is not cached.
+A shopping response with an empty product list is a genuine miss and is cached. The HTTP timeout is
+`COMPARE_TIMEOUT` (default 12 seconds, and never below 8). If that provider is selected and the key
+is empty, search returns 503. It does not silently switch to the fake catalog. Shipping is known only
+when the store published a currency amount or an unconditional “Free delivery”. A threshold such as
+“Free delivery on $49+”, a date, or a day count stays unknown and is ranked by the item price. A
+currency missing from the rate table is dropped rather than relabeled. Store links must be https and
+must not point at SerpAPI, Google, or an IP address.
 
 `POST /api/v1/wishlist` saves a search. `prices:check-alerts` (hourly) emails, and pushes when a device
 token is registered, if the best in-stock total drops. Registration sends a welcome email. Mail uses
@@ -36,19 +44,23 @@ token is registered, if the best in-stock total drops. Registration sends a welc
 
 ## Launch
 
-- `Dockerfile` and `compose.yaml` run the API with PostgreSQL (pgvector). Copy
+- `Dockerfile` runs nginx in front of PHP-FPM (not `artisan serve`). `compose.yaml` adds PostgreSQL
+  (pgvector), a `scheduler` service (`schedule:work`), and a `queue` service (`queue:work`). Copy
   `backend/.env.production.example` to `backend/.env`, set `APP_KEY`, and keep `APP_DEBUG=false`.
-- `deploy/crontab` and `deploy/supervisor.conf` use `/var/www/backend`.
+  The image installs the PostgreSQL client so `db:backup` can run `pg_dump`. Dumps go to the
+  `backups` volume mounted at `storage/app/backups`.
+- `deploy/crontab` and `deploy/supervisor.conf` use `/var/www/backend` on a host that is not using Compose.
 - `GET /up` checks the database and, unless the queue driver is `sync`, the queue. The body is
   `{status: up}` or `{status: down}` with no exception text.
 - `php artisan db:backup` writes `pg_dump` output under `storage/app/backups` and keeps seven files.
   It is scheduled daily at 02:10.
-- `SENTRY_LARAVEL_DSN` posts exception classes to Sentry. An empty DSN does nothing.
+- `SENTRY_LARAVEL_DSN` posts a Sentry envelope (`event_id`, `sent_at`, and a timestamped event). An empty DSN does nothing.
 - `LOG_LEVEL=error` in the production example.
 - The web session is an HttpOnly cookie (`AUTH_COOKIE_SAME_SITE`, `AUTH_COOKIE_SECURE`). Native apps
   still use the bearer token. A cookie is only accepted together with `X-Requested-With`.
 - Terms, privacy, and the affiliate disclosure are on the Legal screen in the app.
-- CI runs PHPUnit, Pint, `tsc`, ESLint, and `npm audit` (the audit step is report-only).
+- CI runs Pint, PHPUnit with `COMMERCE_PURCHASES=true`, PHPUnit again with `COMMERCE_PURCHASES=false`
+  (purchase tests are grouped and skipped), `tsc`, ESLint, and `npm audit` (the audit step is report-only).
 
 The owner must supply, when they want live prices and mail: `SERPAPI_API_KEY`, `AFFILIATE_QUERY_PARAM`,
 `AFFILIATE_ID`, `SENTRY_LARAVEL_DSN`, and the `MAIL_*` SMTP settings. `APP_KEY` is generated per

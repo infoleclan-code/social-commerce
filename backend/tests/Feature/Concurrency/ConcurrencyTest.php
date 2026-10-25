@@ -8,6 +8,7 @@ use Illuminate\Database\Connection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use PDO;
+use PHPUnit\Framework\Attributes\Group;
 use Symfony\Component\Process\Process;
 use Tests\TestCase;
 use Throwable;
@@ -17,6 +18,7 @@ use Throwable;
  * dedicated database (social_race), released at the same instant by a PostgreSQL advisory-lock barrier.
  * Each scenario asserts the outcome that must hold under ANY interleaving.
  */
+#[Group('purchases')]
 final class ConcurrencyTest extends TestCase
 {
     private const DATABASE = 'social_race';

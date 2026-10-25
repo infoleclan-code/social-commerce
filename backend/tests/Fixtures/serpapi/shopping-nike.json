@@ -1,0 +1,16 @@
+{
+  "shopping_results": [
+    {
+      "position": 1,
+      "title": "Men's 2024 Dunk Low",
+      "product_id": "16914877625280977865",
+      "product_link": "https://www.google.com/shopping/product/16914877625280977865?gl=us",
+      "immersive_product_page_token": "eyJtaWQiOiI1NzY0NjI2MTIyODAxMzA0ODEiLCJlbmdpbmUiOiJnb29nbGVfc2hvcHBpbmcifQ",
+      "serpapi_immersive_product_api": "https://serpapi.com/search.json?engine=google_immersive_product&page_token=eyJtaWQiOiI1NzY0NjI2MTIyODAxMzA0ODEiLCJlbmdpbmUiOiJnb29nbGVfc2hvcHBpbmcifQ",
+      "source": "Finish Line",
+      "price": "$105.00",
+      "extracted_price": 105,
+      "delivery": "Free delivery"
+    }
+  ]
+}

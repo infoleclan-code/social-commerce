@@ -36,7 +36,7 @@ Route::prefix('v1')->group(function (): void {
     Route::post('auth/register', [AuthController::class, 'register'])->middleware('throttle:auth');
     Route::post('auth/login', [AuthController::class, 'login'])->middleware('throttle:auth');
     Route::post('admin/login', [AdminController::class, 'login'])->middleware(['throttle:auth', 'throttle:admin-login']);
-    Route::get('cards/{kind}/{id}', [GrowthController::class, 'card'])->middleware('throttle:feed-read');
+    Route::get('cards/{kind}/{id}', [GrowthController::class, 'card'])->middleware(['throttle:feed-read', 'purchases']);
 
     Route::middleware(['auth:sanctum', 'banned'])->group(function (): void {
         Route::get('feed', [FeedController::class, 'index'])->middleware('throttle:feed-read');
@@ -199,7 +199,7 @@ Route::prefix('v1')->group(function (): void {
         Route::post('sellers/{user}/reject', [AdminController::class, 'rejectSeller']);
     });
 
-    Route::prefix('admin')->middleware(['auth:admin', 'admin', 'banned'])->group(function (): void {
+    Route::prefix('admin')->middleware(['auth:admin', 'admin', 'banned', 'throttle:admin-moderate'])->group(function (): void {
         Route::get('posts', [AdminController::class, 'posts']);
         Route::post('posts/{post}/hide', [AdminController::class, 'hidePost']);
         Route::post('posts/{post}/unhide', [AdminController::class, 'unhidePost']);

@@ -40,6 +40,15 @@ export type WishlistItem = {
   notify: boolean;
 };
 
+function dollarsToMinor(value: string | undefined): string | undefined {
+  const trimmed = value?.trim() ?? '';
+  if (trimmed === '' || !/^\d+(\.\d{1,2})?$/.test(trimmed)) {
+    return undefined;
+  }
+  const [whole, fraction = ''] = trimmed.split('.');
+  return String(Number(whole) * 100 + Number((fraction + '00').slice(0, 2)));
+}
+
 export function searchCompare(input: {
   q: string;
   brand?: string;
@@ -54,8 +63,8 @@ export function searchCompare(input: {
     q: input.q,
     brand: input.brand,
     size: input.size,
-    min_minor: input.min_minor,
-    max_minor: input.max_minor,
+    min_minor: dollarsToMinor(input.min_minor),
+    max_minor: dollarsToMinor(input.max_minor),
     in_stock: input.in_stock === false ? '0' : '1',
     sort: input.sort,
     currency: input.currency,
