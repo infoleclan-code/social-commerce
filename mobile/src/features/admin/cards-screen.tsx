@@ -63,6 +63,7 @@ export function CardsScreen() {
   }
 
   async function remove(cardId: string) {
+    setNote(null);
     await removeSavedCard(cardId);
     await reload();
   }
