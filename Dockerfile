@@ -21,6 +21,17 @@ RUN chmod +x /usr/local/bin/web-serve \
     && chown -R www-data:www-data storage bootstrap/cache \
     && chmod -R ug+rwx storage bootstrap/cache
 
+# Bookworm's default client is PostgreSQL 15. The server is 16, and pg_dump refuses a newer server.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl gnupg \
+    && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/postgresql.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/postgresql.gpg] http://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-client-16 \
+    && ln -sf /usr/lib/postgresql/16/bin/pg_dump /usr/local/bin/pg_dump \
+    && ln -sf /usr/lib/postgresql/16/bin/pg_restore /usr/local/bin/pg_restore \
+    && rm -rf /var/lib/apt/lists/*
+
 EXPOSE 80
 # The official image entrypoint only forwards the command. Compose overrides this
 # CMD for the scheduler and the queue worker, which do not start nginx.

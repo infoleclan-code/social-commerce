@@ -47,8 +47,8 @@ token is registered, if the best in-stock total drops. Registration sends a welc
 - `Dockerfile` runs nginx in front of PHP-FPM (not `artisan serve`). `compose.yaml` adds PostgreSQL
   (pgvector), a `scheduler` service (`schedule:work`), and a `queue` service (`queue:work`). Copy
   `backend/.env.production.example` to `backend/.env`, set `APP_KEY`, and keep `APP_DEBUG=false`.
-  The image installs the PostgreSQL client so `db:backup` can run `pg_dump`. Dumps go to the
-  `backups` volume mounted at `storage/app/backups`.
+  The image installs the PostgreSQL 16 client so `db:backup` can run `pg_dump` against the pgvector 16
+  server. Dumps go to the `backups` volume mounted at `storage/app/backups`.
 - `deploy/crontab` and `deploy/supervisor.conf` use `/var/www/backend` on a host that is not using Compose.
 - `GET /up` checks the database and, unless the queue driver is `sync`, the queue. The body is
   `{status: up}` or `{status: down}` with no exception text.
