@@ -272,6 +272,36 @@ final class ApiException extends RuntimeException
         return new self(422, 'AUTH_FAILED', 'The email or password is wrong.');
     }
 
+    public static function adminRequired(): self
+    {
+        return new self(403, 'ADMIN_REQUIRED', 'An admin session is required.');
+    }
+
+    public static function accountBanned(): self
+    {
+        return new self(403, 'ACCOUNT_BANNED', 'This account is banned.');
+    }
+
+    public static function totpInvalid(): self
+    {
+        return new self(422, 'TOTP_INVALID', 'The one-time code is wrong.');
+    }
+
+    public static function auctionClosed(): self
+    {
+        return new self(409, 'AUCTION_CLOSED', 'That auction cannot be changed.');
+    }
+
+    public static function cardNotFound(): self
+    {
+        return new self(404, 'CARD_NOT_FOUND', 'That card is not saved.');
+    }
+
+    public static function testCardUnavailable(): self
+    {
+        return new self(409, 'TEST_CARD_UNAVAILABLE', 'Save the card with Stripe.');
+    }
+
     public static function friendRequestClosed(): self
     {
         return new self(409, 'FRIEND_REQUEST_CLOSED', 'That friend request cannot be changed.');

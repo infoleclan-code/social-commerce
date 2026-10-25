@@ -433,7 +433,12 @@ final class HabitScaleService
     /** @return array<string, mixed> */
     public function liveAuction(): array
     {
-        $live = DB::table('auctions')->where('ends_at', '>', now())->orderBy('ends_at')->first();
+        $live = DB::table('auctions')
+            ->whereNull('ended_at')
+            ->where('starts_at', '<=', now())
+            ->where('ends_at', '>', now())
+            ->orderBy('ends_at')
+            ->first();
 
         return ['auction' => $live === null ? null : $this->auctionShape($live)];
     }
@@ -450,7 +455,7 @@ final class HabitScaleService
             throw ApiException::bidTooLow();
         }
         $preview = DB::table('auctions')->where('id', $auctionId)->first();
-        if ($preview === null || now()->greaterThan($preview->ends_at) || $amount <= (int) $preview->current_minor) {
+        if ($preview === null || $preview->ended_at !== null || now()->lessThan($preview->starts_at) || now()->greaterThan($preview->ends_at) || $amount <= (int) $preview->current_minor) {
             throw ApiException::bidTooLow();
         }
         $product = DB::table('products')->where('id', $preview->product_id)->first();
@@ -478,7 +483,7 @@ final class HabitScaleService
         try {
             return DB::transaction(function () use ($user, $auctionId, $amount, $intentId): array {
                 $auction = DB::table('auctions')->where('id', $auctionId)->lockForUpdate()->first();
-                if ($auction === null || now()->greaterThan($auction->ends_at) || $amount <= (int) $auction->current_minor) {
+                if ($auction === null || $auction->ended_at !== null || now()->lessThan($auction->starts_at) || now()->greaterThan($auction->ends_at) || $amount <= (int) $auction->current_minor) {
                     $this->releaseHold($intentId);
                     throw ApiException::bidTooLow();
                 }

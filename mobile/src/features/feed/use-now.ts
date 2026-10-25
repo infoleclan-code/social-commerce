@@ -8,11 +8,12 @@ export function useNow(active = true): number {
     if (!active) {
       return;
     }
-    setNow(Date.now());
+    const kick = setTimeout(() => setNow(Date.now()), 0);
     const id = setInterval(() => {
       setNow(Date.now());
     }, 1000);
     return () => {
+      clearTimeout(kick);
       clearInterval(id);
     };
   }, [active]);

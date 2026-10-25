@@ -93,6 +93,8 @@ export class ApiConfigError extends Error {
 export type ApiOptions = {
   /** Time limit per attempt. Defaults: 15 s reads, 20 s writes, 35 s keyed writes and uploads. */
   timeoutMs?: number;
+  /** Overrides the signed-in token. Used for the separate admin session. */
+  token?: string | null;
   /**
    * Retries after an unknown outcome or a transient refusal (408, 425, 429, 5xx, REQUEST_IN_PROGRESS).
    * Default 3 for GET/HEAD and for requests with an Idempotency-Key; 0 for other writes, which are
@@ -254,7 +256,7 @@ export async function api<T>(path: string, init: RequestInit = {}, options: ApiO
   const method = (init.method ?? 'GET').toUpperCase();
   const headers = new Headers(init.headers);
   headers.set('Accept', 'application/json');
-  const token = await readAuthToken();
+  const token = options.token !== undefined ? options.token : await readAuthToken();
   if (token) {
     headers.set('Authorization', `Bearer ${token}`);
   }

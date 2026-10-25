@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use App\Exceptions\ApiException;
 use App\Http\Middleware\EnforceIdempotency;
+use App\Http\Middleware\EnsureAdmin;
+use App\Http\Middleware\RejectBanned;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -20,7 +22,11 @@ return Application::configure(basePath: dirname(__DIR__))
         // API is token-based (Sanctum bearer tokens from the mobile app); no session/CSRF on /api.
         // There is no web login route. A guest hitting /api must get 401, not a redirect that 500s.
         $middleware->redirectGuestsTo(fn (Request $request) => $request->is('api/*') || $request->expectsJson() ? null : '/');
-        $middleware->alias(['idempotent' => EnforceIdempotency::class]);
+        $middleware->alias([
+            'idempotent' => EnforceIdempotency::class,
+            'admin' => EnsureAdmin::class,
+            'banned' => RejectBanned::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         // App\Exceptions\ApiException renders itself ({message, code, errors?}).

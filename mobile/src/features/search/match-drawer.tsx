@@ -19,7 +19,6 @@ import { elevation, palette, radius } from '@/theme/tokens';
  * box through style props, because React Native has no overflow-y or overscroll-behavior.
  */
 const DRAWER_CLASS = 'z-50';
-const WEB_SCROLL_CLASS = 'max-h-[75vh] overflow-y-auto overscroll-contain pb-24';
 const MAX_HEIGHT_RATIO = 0.75;
 const BOTTOM_PADDING = 96;
 /** Display estimate only; the server owns each merchant's lock period (merchants.typical_lock_days). */
@@ -54,7 +53,6 @@ export function MatchDrawer({ offers, source, title, onHeight }: Props) {
   const openPrepared = useCheckoutStore((state) => state.openPrepared);
   const records = useCheckoutStore((state) => state.records);
   const ordered = new Set(records.map((record) => record.slotId));
-  const web = Platform.OS === 'web';
   // The original's price is the same reference for every store, so it is shown once, in the header.
   const original = offers.find((offer) => offer.originalPrice !== null)?.originalPrice ?? null;
 

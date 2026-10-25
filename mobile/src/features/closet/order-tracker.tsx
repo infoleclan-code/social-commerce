@@ -40,14 +40,16 @@ export function OrderTracker() {
   const closeTracking = useClosetStore((state) => state.closeTracking);
   const [receipt, setReceipt] = useState(false);
   const [map, setMap] = useState(true);
+  const [trackedId, setTrackedId] = useState(trackingId);
   const pulse = useSharedValue(0.4);
   const rise = useSharedValue(28);
   const active = 2;
 
-  useEffect(() => {
+  if (trackingId !== trackedId) {
+    setTrackedId(trackingId);
     setReceipt(false);
     setMap(true);
-  }, [trackingId]);
+  }
 
   useEffect(() => {
     pulse.value = withRepeat(withTiming(1, { duration: 900 }), -1, true);

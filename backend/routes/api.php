@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\CommerceController;
@@ -35,9 +36,10 @@ Route::prefix('v1')->group(function (): void {
     Route::post('stripe/webhook', [StripeWebhookController::class, 'handle'])->middleware('throttle:stripe-webhook');
     Route::post('auth/register', [AuthController::class, 'register'])->middleware('throttle:auth');
     Route::post('auth/login', [AuthController::class, 'login'])->middleware('throttle:auth');
+    Route::post('admin/login', [AdminController::class, 'login'])->middleware('throttle:auth');
     Route::get('cards/{kind}/{id}', [GrowthController::class, 'card'])->middleware('throttle:feed-read');
 
-    Route::middleware('auth:sanctum')->group(function (): void {
+    Route::middleware(['auth:sanctum', 'banned'])->group(function (): void {
         Route::get('feed', [FeedController::class, 'index'])->middleware('throttle:feed-read');
         Route::post('feed', [FeedController::class, 'store'])->middleware('throttle:feed-post');
         Route::delete('feed/{post}', [FeedController::class, 'destroy']);
@@ -168,7 +170,34 @@ Route::prefix('v1')->group(function (): void {
         Route::post('products/{product}/reviews', [DifferentiatorController::class, 'review'])->middleware('throttle:feed-comment');
         Route::post('products/{product}/questions', [DifferentiatorController::class, 'ask'])->middleware('throttle:feed-comment');
         Route::post('questions/{question}/answer', [DifferentiatorController::class, 'answer'])->middleware('throttle:feed-comment');
+        Route::get('payment-methods', [Phase1Controller::class, 'paymentMethods']);
+        Route::delete('payment-methods/{method}', [Phase1Controller::class, 'destroyPaymentMethod']);
         Route::post('payment-methods/setup', [Phase1Controller::class, 'beginSetup'])->middleware(['throttle:checkout', 'idempotent']);
+        Route::post('payment-methods/setup/test-card', [Phase1Controller::class, 'saveTestCard'])->middleware(['throttle:checkout', 'idempotent']);
         Route::post('payment-methods/confirm', [Phase1Controller::class, 'confirmSetup'])->middleware(['throttle:checkout', 'idempotent']);
+    });
+
+    Route::prefix('admin')->middleware(['auth:admin', 'admin', 'banned'])->group(function (): void {
+        Route::get('auctions', [AdminController::class, 'auctions']);
+        Route::post('auctions', [AdminController::class, 'createAuction']);
+        Route::post('auctions/{auction}/schedule', [AdminController::class, 'scheduleAuction']);
+        Route::post('auctions/{auction}/end', [AdminController::class, 'endAuction']);
+        Route::get('products', [AdminController::class, 'products']);
+        Route::post('products', [AdminController::class, 'createProduct']);
+        Route::patch('products/{product}', [AdminController::class, 'updateProduct']);
+        Route::get('sellers', [AdminController::class, 'sellers']);
+        Route::post('sellers/{user}/verify', [AdminController::class, 'verifySeller']);
+        Route::post('sellers/{user}/reject', [AdminController::class, 'rejectSeller']);
+        Route::get('posts', [AdminController::class, 'posts']);
+        Route::post('posts/{post}/hide', [AdminController::class, 'hidePost']);
+        Route::post('posts/{post}/unhide', [AdminController::class, 'unhidePost']);
+        Route::delete('posts/{post}', [AdminController::class, 'removePost']);
+        Route::get('comments', [AdminController::class, 'comments']);
+        Route::post('comments/{comment}/hide', [AdminController::class, 'hideComment']);
+        Route::post('comments/{comment}/unhide', [AdminController::class, 'unhideComment']);
+        Route::delete('comments/{comment}', [AdminController::class, 'removeComment']);
+        Route::get('users', [AdminController::class, 'users']);
+        Route::post('users/{user}/ban', [AdminController::class, 'ban']);
+        Route::post('users/{user}/unban', [AdminController::class, 'unban']);
     });
 });

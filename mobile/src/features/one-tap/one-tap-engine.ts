@@ -10,6 +10,7 @@ import {
   fetchDefaultPaymentMethod,
   fetchOrder,
   oneTapCheckout,
+  saveTestCard,
   syncOrder,
 } from '@/api/social-commerce';
 import { isBusy, useOneTapStore, type OneTapProblem, type Purchase } from '@/features/one-tap/one-tap-store';
@@ -177,9 +178,9 @@ export function startOneTap(queryClient: QueryClient, product: ProductCard, vari
   };
   store.put(purchase);
 
-  // Known to have no saved card: open the card sheet first instead of sending a tap that will be refused.
+  // Known to have no saved card: collect one before a tap the API would refuse.
   const method = queryClient.getQueryData<DefaultPaymentMethod>(queryKeys.oneTap.paymentMethod);
-  if (product.purchase.mode === 'one_tap' && method && !method.has_default && stripeBridge.supported) {
+  if (product.purchase.mode === 'one_tap' && method && !method.has_default && canCollectCard(method.publishable_key)) {
     void saveCardThenBuy(queryClient, product.id, purchase.attempt);
     return;
   }
@@ -449,21 +450,45 @@ function scheduleWindowEnd(productId: string, attempt: number, order: OrderSumma
   windowTimers.set(productId, timer);
 }
 
+/** Native PaymentSheet, or the local fake gateway's test card. Real Stripe on web uses the Cards screen. */
+function canCollectCard(publishableKey: string | null | undefined): boolean {
+  return stripeBridge.supported || publishableKey == null || publishableKey === '';
+}
+
 async function saveCardThenBuy(queryClient: QueryClient, productId: string, attempt: number): Promise<void> {
-  if (!stripeBridge.supported) {
-    // No PaymentSheet on this platform (web): do not create a SetupIntent that can never be completed.
-    failWith(productId, attempt, 'unsupported', null);
-    return;
-  }
   update(productId, attempt, { phase: 'saving_card', problem: null });
   try {
+    const knownKey = await resolvePublishableKey();
+    if (!canCollectCard(knownKey)) {
+      failWith(productId, attempt, 'unsupported', null);
+      return;
+    }
     // One key per "Add card": the transport's retries reuse it; a new sheet is a new SetupIntent.
     const setupKey = newIdempotencyKey('setup');
     const setup = await beginPaymentMethodSetup(setupKey);
     rememberPublishableKey(setup.publishable_key);
-    const publishableKey = setup.publishable_key ?? (await resolvePublishableKey());
+    const publishableKey = setup.publishable_key ?? knownKey;
     if (!publishableKey) {
-      failWith(productId, attempt, 'setup_failed', 'stripe_not_configured');
+      const saved = await saveTestCard(setup.id, `save-${setupKey}`.slice(0, 80));
+      if (!current(productId, attempt)) {
+        return;
+      }
+      queryClient.setQueryData<DefaultPaymentMethod>(queryKeys.oneTap.paymentMethod, {
+        has_default: saved.has_default,
+        summary: saved.summary,
+        publishable_key: saved.publishable_key ?? null,
+      });
+      if (!saved.has_default && !(await waitForSavedMethod(queryClient))) {
+        failWith(productId, attempt, 'setup_failed', saved.setup_status ?? null);
+        return;
+      }
+      if (update(productId, attempt, { phase: 'submitting', key: newIdempotencyKey() })) {
+        await submit(queryClient, productId, attempt);
+      }
+      return;
+    }
+    if (!stripeBridge.supported) {
+      failWith(productId, attempt, 'unsupported', null);
       return;
     }
     if (!setup.client_secret) {

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Enums\ListingStatus;
 use App\Models\Concerns\PostgresModel;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -22,6 +23,7 @@ class Product extends Model
             'squad_price_minor' => 'integer',
             'stock' => 'integer',
             'try_on_enabled' => 'boolean',
+            'listing_status' => ListingStatus::class,
         ];
     }
 

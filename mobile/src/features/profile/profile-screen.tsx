@@ -205,6 +205,8 @@ export function ProfileScreen({ userId }: Props) {
       onGrow={() => router.push('/grow')}
       onOrders={() => router.push('/orders')}
       onCart={() => router.push('/cart')}
+      onCards={() => router.push('/cards')}
+      onAdmin={() => router.push('/admin')}
       onLogout={() => void leave()}
       onFriend={(action) => void changeFriend(action)}
       onFollow={(already) => void changeFollow(already)}
@@ -324,6 +326,8 @@ function ProfileHeader({
   onGrow,
   onOrders,
   onCart,
+  onCards,
+  onAdmin,
   onLogout,
   onFriend,
   onFollow,
@@ -349,6 +353,8 @@ function ProfileHeader({
   onGrow: () => void;
   onOrders: () => void;
   onCart: () => void;
+  onCards: () => void;
+  onAdmin: () => void;
   onLogout: () => void;
   onFriend: (action: 'request' | 'accept' | 'decline' | 'block') => void;
   onFollow: (alreadyFollowing: boolean) => void;
@@ -403,6 +409,12 @@ function ProfileHeader({
             </Pressable>
             <Pressable accessibilityRole="button" onPress={onCart} style={pill}>
               <Text style={pillText}>{t('profile.cart')}</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel={t('profile.cards')} onPress={onCards} style={pill}>
+              <Text style={pillText}>{t('profile.cards')}</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel={t('profile.admin')} onPress={onAdmin} style={pill}>
+              <Text style={pillText}>{t('profile.admin')}</Text>
             </Pressable>
             <Pressable accessibilityRole="button" onPress={onLogout} style={pill}>
               <Text style={pillText}>{t('profile.logout')}</Text>

@@ -408,6 +408,20 @@ export type PaymentSetup = {
   publishable_key: string | null;
 };
 
+export type SavedCard = {
+  id: string;
+  brand: string;
+  last4: string;
+  exp_month: number | null;
+  exp_year: number | null;
+  is_default: boolean;
+};
+
+export type SavedCardList = {
+  publishable_key: string | null;
+  cards: SavedCard[];
+};
+
 export type PaymentSetupConfirmation = {
   has_default: boolean;
   summary: PaymentMethodSummary | null;

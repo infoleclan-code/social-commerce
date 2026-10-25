@@ -34,6 +34,7 @@ final readonly class CommentService
 
         $comments = FeedPostComment::query()
             ->where('post_id', $post->id)
+            ->whereNull('hidden_at')
             ->when($parentId === null, fn (Builder $top) => $top->whereNull('parent_id'), fn (Builder $replies) => $replies->where('parent_id', $parentId))
             ->whereNotIn('user_id', function ($blocked) use ($viewer): void {
                 $id = $viewer->getKey();

@@ -34,6 +34,7 @@ final class HashtagService
              WHERE kind = 'media'
                AND audience = 'public'
                AND deleted_at IS NULL
+               AND hidden_at IS NULL
                AND tag ILIKE ? ESCAPE '\'
              GROUP BY tag
              ORDER BY (tag = ?) DESC, posts DESC, tag ASC
@@ -62,6 +63,7 @@ final class HashtagService
                  WHERE kind = 'media'
                    AND audience = 'public'
                    AND deleted_at IS NULL
+                   AND hidden_at IS NULL
                    AND created_at >= now() - make_interval(days => ?)
                  GROUP BY tag
                  ORDER BY SUM(likes_count + 2 * comments_count + 3 * shares_count) DESC, posts DESC, tag ASC

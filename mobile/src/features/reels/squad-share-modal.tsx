@@ -99,8 +99,12 @@ function formatRemaining(seconds: number): string {
 
 function useCountdown(endsAt: string): number {
   const [seconds, setSeconds] = useState(() => remaining(endsAt));
-  useEffect(() => {
+  const [trackedEnd, setTrackedEnd] = useState(endsAt);
+  if (endsAt !== trackedEnd) {
+    setTrackedEnd(endsAt);
     setSeconds(remaining(endsAt));
+  }
+  useEffect(() => {
     const timer = setInterval(() => setSeconds(remaining(endsAt)), 1000);
     return () => clearInterval(timer);
   }, [endsAt]);

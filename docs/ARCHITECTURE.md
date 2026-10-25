@@ -547,6 +547,8 @@ Mobile (`.env`, `EXPO_PUBLIC_*` values are compiled into the app and are not sec
 6. **Counter buffering for viral posts** (see scaling).
 7. **Personalized ranking** beyond the engagement/recency score.
 8. **Order button wording and price display** for the EU (see compliance).
-9. **Pre-existing mobile lint debt**: 61 findings from the stricter React Compiler rules in screens from
-   earlier work (mostly `.value =` assignments to Reanimated shared values). The count is the same before
-   and after this release; the new files have none.
+9. **Admin and saved cards.** `POST /api/v1/admin/login` issues an `admin` ability token after password
+   and TOTP. Catalog, auction, seller, and moderation routes use that guard. A hidden post or comment
+   (`hidden_at`) is excluded from feeds. Card setup uses Stripe Elements on web and the Stripe React
+   Native SDK on iOS and Android; the fake gateway accepts `POST /payment-methods/setup/test-card`.
+   `expo lint` is clean, including the React Compiler rules.

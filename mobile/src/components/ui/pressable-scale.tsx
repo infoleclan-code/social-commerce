@@ -35,11 +35,11 @@ export function PressableScale({
         className={className}
         style={fill ? { flex: 1 } : undefined}
         onPressIn={(event) => {
-          scale.value = withSpring(motion.press, motion.spring);
+          scale.set(withSpring(motion.press, motion.spring));
           onPressIn?.(event);
         }}
         onPressOut={(event) => {
-          scale.value = withSpring(1, motion.spring);
+          scale.set(withSpring(1, motion.spring));
           onPressOut?.(event);
         }}
         {...props}

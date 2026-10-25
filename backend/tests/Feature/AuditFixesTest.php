@@ -223,7 +223,7 @@ final class AuditFixesTest extends TestCase
         $token = (string) $this->postJson('/api/v1/auth/login', [
             'email' => 'ada@example.com',
             'password' => 'correct-horse',
-        ])->assertOk()->json('data.token');
+        ])->assertOk()->assertJsonPath('data.user.role', 'member')->json('data.token');
         $this->postJson('/api/v1/auth/login', ['email' => 'ada@example.com', 'password' => 'nope'])->assertStatus(422)->assertJsonPath('code', 'AUTH_FAILED');
 
         $this->withHeader('Authorization', 'Bearer '.$token)->getJson('/api/v1/me')->assertOk()->assertJsonPath('data.username', 'ada_lovelace');

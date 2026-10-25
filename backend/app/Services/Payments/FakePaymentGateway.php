@@ -144,6 +144,18 @@ final class FakePaymentGateway implements PaymentGateway
         $this->commit();
     }
 
+    public function supportsTestCards(): bool
+    {
+        return true;
+    }
+
+    public function detachPaymentMethod(string $paymentMethodId): void
+    {
+        $this->begin();
+        unset($this->paymentMethods[$paymentMethodId]);
+        $this->commit();
+    }
+
     public function authorize(AuthorizeRequest $request): PaymentIntentResult
     {
         $this->begin();

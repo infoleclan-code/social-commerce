@@ -4,10 +4,15 @@ declare(strict_types=1);
 
 namespace App\Services\Auth;
 
+use App\Enums\RiskStatus;
+use App\Enums\UserRole;
 use App\Exceptions\ApiException;
 use App\Models\User;
+use App\Support\Totp;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Throwable;
 
 /**
  * Email and password sessions for the mobile app. Tokens expire (config sanctum.expiration,
@@ -37,11 +42,36 @@ final class AuthService
         if ($user === null || ! is_string($user->password) || ! Hash::check($password, $user->password)) {
             throw ApiException::authFailed();
         }
+        if ($user->risk_status === RiskStatus::Banned) {
+            throw ApiException::accountBanned();
+        }
         if ($user->anonymized_at !== null || $user->deleted_at !== null) {
             throw ApiException::authFailed();
         }
 
         return $this->issue($user);
+    }
+
+    /**
+     * A separate admin session. The password is checked first. The one-time code is a TOTP from the
+     * admin's secret, or the local demo code when ADMIN_DEMO_OTP is set outside production.
+     *
+     * @return array{token: string, user: array<string, mixed>}
+     */
+    public function loginAdmin(string $email, string $password, string $otp): array
+    {
+        $user = User::query()->whereRaw('email = ?', [$email])->first();
+        if ($user === null || $user->role !== UserRole::Admin || ! is_string($user->password) || ! Hash::check($password, $user->password)) {
+            throw ApiException::authFailed();
+        }
+        if ($user->anonymized_at !== null || $user->deleted_at !== null || $user->risk_status === RiskStatus::Banned) {
+            throw ApiException::accountBanned();
+        }
+        if (! $this->otpOk($user, trim($otp))) {
+            throw ApiException::totpInvalid();
+        }
+
+        return $this->issue($user, 'admin', ['admin']);
     }
 
     public function logout(User $user, ?string $deviceId = null): void
@@ -59,12 +89,15 @@ final class AuthService
         }
     }
 
-    /** @return array{token: string, user: array<string, mixed>} */
-    private function issue(User $user): array
+    /**
+     * @param  list<string>  $abilities
+     * @return array{token: string, user: array<string, mixed>}
+     */
+    private function issue(User $user, string $name = 'mobile', array $abilities = ['mobile']): array
     {
         $minutes = config('sanctum.expiration');
         $expires = is_numeric($minutes) ? now()->addMinutes((int) $minutes) : null;
-        $token = $user->createToken('mobile', ['*'], $expires);
+        $token = $user->createToken($name, $abilities, $expires);
 
         return [
             'token' => $token->plainTextToken,
@@ -72,7 +105,26 @@ final class AuthService
                 'id' => $user->id,
                 'username' => $user->username,
                 'display_name' => $user->display_name,
+                'role' => $user->role instanceof UserRole ? $user->role->value : UserRole::Member->value,
             ],
         ];
+    }
+
+    private function otpOk(User $user, string $otp): bool
+    {
+        $stored = $user->totp_secret;
+        if (is_string($stored) && $stored !== '') {
+            try {
+                $secret = Crypt::decryptString($stored);
+            } catch (Throwable) {
+                $secret = '';
+            }
+            if ($secret !== '' && Totp::verify($secret, $otp)) {
+                return true;
+            }
+        }
+        $demo = (string) config('admin.demo_otp');
+
+        return $demo !== '' && ! app()->environment('production') && hash_equals($demo, $otp);
     }
 }

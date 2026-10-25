@@ -18,6 +18,7 @@ import type {
   OrderSummary,
   PaymentSetup,
   PaymentSetupConfirmation,
+  SavedCardList,
   ProductOffers,
   RelatedProducts,
   ShareChannel,
@@ -455,3 +456,58 @@ export function registerDevice(body: { platform: 'ios' | 'android' | 'web'; expo
 export function declineFriend(userId: string): Promise<{ connection: string }> {
   return api<Envelope<{ connection: string }>>(`/users/${encodeURIComponent(userId)}/friend-decline`, json('POST')).then((body) => body.data);
 }
+
+export function fetchSavedCards(signal?: AbortSignal): Promise<SavedCardList> {
+  return api<Envelope<SavedCardList>>('/payment-methods', { signal }).then((body) => body.data);
+}
+
+export function saveTestCard(setupIntentId: string, idempotencyKey: string): Promise<PaymentSetupConfirmation> {
+  return api<Envelope<PaymentSetupConfirmation>>('/payment-methods/setup/test-card', keyed(idempotencyKey, { setup_intent_id: setupIntentId })).then((body) => body.data);
+}
+
+export function removeSavedCard(cardId: string): Promise<void> {
+  return api(`/payment-methods/${encodeURIComponent(cardId)}`, { method: 'DELETE' }).then(() => undefined);
+}
+
+export type AdminSession = { token: string; user: { id: string; username: string; display_name: string | null; role: string } };
+
+export function loginAdmin(email: string, password: string, otp: string): Promise<AdminSession> {
+  return api<Envelope<AdminSession>>('/admin/login', json('POST', { email, password, otp })).then((body) => body.data);
+}
+
+function adminGet<T>(token: string, path: string): Promise<T> {
+  return api<Envelope<T>>(path, {}, { token }).then((body) => body.data);
+}
+
+function adminSend<T>(token: string, path: string, method: 'POST' | 'PATCH', body?: object): Promise<T> {
+  return api<Envelope<T>>(path, json(method, body), { token }).then((response) => response.data);
+}
+
+export type AdminAuction = { id: string; product_id: string; title: string; starts_at: string; ends_at: string; ended: boolean; leader: string | null };
+export type AdminProduct = { id: string; title: string; brand: string; listing_status: string; stock: number };
+export type AdminSeller = { user_id: string; username: string; legal_name: string; status: string; charges_enabled: boolean };
+export type AdminPost = { id: string; username: string; caption: string | null; hidden: boolean };
+export type AdminComment = { id: string; username: string; body: string; hidden: boolean };
+export type AdminUser = { id: string; username: string; display_name: string | null; risk_status: string; role: string };
+
+export const adminApi = {
+  auctions: (token: string) => adminGet<AdminAuction[]>(token, '/admin/auctions'),
+  products: (token: string) => adminGet<AdminProduct[]>(token, '/admin/products'),
+  sellers: (token: string) => adminGet<AdminSeller[]>(token, '/admin/sellers'),
+  posts: (token: string) => adminGet<AdminPost[]>(token, '/admin/posts'),
+  comments: (token: string) => adminGet<AdminComment[]>(token, '/admin/comments'),
+  users: (token: string) => adminGet<AdminUser[]>(token, '/admin/users'),
+  scheduleAuction: (token: string, productId: string) => adminSend<AdminAuction>(token, '/admin/auctions', 'POST', {
+    product_id: productId,
+    start_minor: 1000,
+    starts_at: new Date(Date.now() - 60_000).toISOString(),
+    ends_at: new Date(Date.now() + 3_600_000).toISOString(),
+  }),
+  endAuction: (token: string, auctionId: string) => adminSend<AdminAuction>(token, `/admin/auctions/${auctionId}/end`, 'POST', {}),
+  blockProduct: (token: string, productId: string) => adminSend<AdminProduct>(token, `/admin/products/${productId}`, 'PATCH', { listing_status: 'blocked' }),
+  verifySeller: (token: string, userId: string) => adminSend<{ status: string }>(token, `/admin/sellers/${userId}/verify`, 'POST', {}),
+  hidePost: (token: string, postId: string) => adminSend<{ hidden: boolean }>(token, `/admin/posts/${postId}/hide`, 'POST', {}),
+  unhidePost: (token: string, postId: string) => adminSend<{ hidden: boolean }>(token, `/admin/posts/${postId}/unhide`, 'POST', {}),
+  removeComment: (token: string, commentId: string) => api(`/admin/comments/${commentId}`, { method: 'DELETE' }, { token }).then(() => undefined),
+  banUser: (token: string, userId: string) => adminSend<{ banned: boolean }>(token, `/admin/users/${userId}/ban`, 'POST', {}),
+};

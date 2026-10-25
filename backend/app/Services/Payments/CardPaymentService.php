@@ -34,8 +34,74 @@ final class CardPaymentService
                 'exp_year' => $method->exp_year,
                 'wallet' => null,
             ],
-            'publishable_key' => config('services.stripe.key'),
+            'publishable_key' => $this->publishableKey(),
         ];
+    }
+
+    /** @return array{publishable_key: string|null, cards: list<array<string, mixed>>} */
+    public function list(User $user): array
+    {
+        $cards = DB::table('saved_payment_methods')
+            ->where('user_id', $user->id)
+            ->orderByDesc('is_default')
+            ->orderByDesc('created_at')
+            ->get();
+
+        return [
+            'publishable_key' => $this->publishableKey(),
+            'cards' => $cards->map(fn (object $row): array => [
+                'id' => $row->id,
+                'brand' => $row->brand,
+                'last4' => $row->last4,
+                'exp_month' => $row->exp_month === null ? null : (int) $row->exp_month,
+                'exp_year' => $row->exp_year === null ? null : (int) $row->exp_year,
+                'is_default' => (bool) $row->is_default,
+            ])->all(),
+        ];
+    }
+
+    public function remove(User $user, string $methodId): void
+    {
+        if (! Str::isUuid($methodId)) {
+            throw ApiException::cardNotFound();
+        }
+        $row = DB::table('saved_payment_methods')->where('id', $methodId)->where('user_id', $user->id)->first();
+        if ($row === null) {
+            throw ApiException::cardNotFound();
+        }
+        $this->call(fn () => $this->gateway->detachPaymentMethod((string) $row->stripe_payment_method_id));
+        DB::transaction(function () use ($user, $row): void {
+            DB::table('saved_payment_methods')->where('id', $row->id)->delete();
+            if ($row->is_default) {
+                $next = DB::table('saved_payment_methods')->where('user_id', $user->id)->orderByDesc('created_at')->value('id');
+                if (is_string($next) && $next !== '') {
+                    DB::table('saved_payment_methods')->where('id', $next)->update(['is_default' => true]);
+                }
+            }
+        });
+    }
+
+    /**
+     * Finishes a SetupIntent on the local fake gateway. Real Stripe keys refuse this: the app confirms
+     * the card with Stripe.js or the native SDK, then calls confirmSetup.
+     *
+     * @return array<string, mixed>
+     */
+    public function saveTestCard(User $user, string $setupIntentId): array
+    {
+        if (! $this->gateway->supportsTestCards()) {
+            throw ApiException::testCardUnavailable();
+        }
+        $customer = DB::table('users')->where('id', $user->id)->value('stripe_customer_id');
+        $setup = $this->gateway->retrieveSetupIntent($setupIntentId);
+        if (! is_string($customer) || $customer === '' || $setup === null || $setup['customer'] !== $customer) {
+            throw ApiException::setupInvalid();
+        }
+        if ($setup['status'] !== 'succeeded' || $setup['payment_method'] === null) {
+            $this->gateway->completeSetup($setupIntentId, 'pm_test_'.substr(hash('sha256', $setupIntentId), 0, 24));
+        }
+
+        return $this->confirmSetup($user, $setupIntentId, null);
     }
 
     /**
@@ -48,9 +114,8 @@ final class CardPaymentService
     public function beginSetup(User $user, string $idempotencyKey): array
     {
         $intent = $this->call(fn () => $this->gateway->createSetupIntent($this->customer($user), 'setup:'.$user->id.':'.$idempotencyKey));
-        $publishable = config('services.stripe.key');
 
-        return $intent + ['publishable_key' => is_string($publishable) && $publishable !== '' ? $publishable : null];
+        return $intent + ['publishable_key' => $this->publishableKey()];
     }
 
     /** @return array<string, mixed> */
@@ -132,6 +197,13 @@ final class CardPaymentService
         DB::table('users')->where('id', $user->id)->whereNull('stripe_customer_id')->update(['stripe_customer_id' => $created]);
 
         return (string) DB::table('users')->where('id', $user->id)->value('stripe_customer_id');
+    }
+
+    private function publishableKey(): ?string
+    {
+        $publishable = config('services.stripe.key');
+
+        return is_string($publishable) && $publishable !== '' ? $publishable : null;
     }
 
     /**

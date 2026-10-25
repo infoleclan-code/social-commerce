@@ -81,6 +81,7 @@ final readonly class FeedService
             ->where('feed_posts.kind', FeedPostKind::Media->value)
             ->where('feed_posts.audience', FeedAudience::Public->value)
             ->whereNull('feed_posts.deleted_at')
+            ->whereNull('feed_posts.hidden_at')
             ->when($cursor !== null, function (Builder $after) use ($score, $viewerId, $cursor): void {
                 $after->whereRaw(
                     "({$score}) < ?::double precision OR (({$score}) = ?::double precision AND feed_posts.id < ?)",
@@ -125,7 +126,8 @@ final readonly class FeedService
                 ->whereIn('feed_posts.id', array_keys($scores))
                 ->where('feed_posts.kind', FeedPostKind::Media->value)
                 ->where('feed_posts.audience', FeedAudience::Public->value)
-                ->whereNull('feed_posts.deleted_at'),
+                ->whereNull('feed_posts.deleted_at')
+                ->whereNull('feed_posts.hidden_at'),
             $viewer,
         )->sortBy(fn (FeedPost $post): int => $position[$post->id])->values();
         if ($posts->count() < $limit + 1) {
@@ -220,6 +222,7 @@ final readonly class FeedService
     private function hydrate(Builder $query, User $viewer, ?int $limit = null): Collection
     {
         return $query
+            ->whereNull('feed_posts.hidden_at')
             ->withoutBlockedFor($viewer)
             ->withViewerState($viewer)
             ->with(['user:id,username,display_name,avatar_path', 'shopTag.product.liveDrops'])

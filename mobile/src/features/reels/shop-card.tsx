@@ -7,7 +7,7 @@ import type { ShopOffer } from '@/api/contracts';
 import { saveCartItem } from '@/api/social-commerce';
 import { expectedTotalMinor } from '@/features/payments/expected-total';
 import { t } from '@/lib/i18n';
-import { formatMoney, type DisplayMoney } from '@/lib/money';
+import { formatMoney } from '@/lib/money';
 import { palette, radius } from '@/theme/tokens';
 
 type Props = {
@@ -119,8 +119,12 @@ function Chip({ label, onPress, disabled, primary = false }: { label: string; on
 
 function useCountdown(endsAt: string | null): number {
   const [seconds, setSeconds] = useState(() => remaining(endsAt));
-  useEffect(() => {
+  const [trackedEnd, setTrackedEnd] = useState(endsAt);
+  if (endsAt !== trackedEnd) {
+    setTrackedEnd(endsAt);
     setSeconds(remaining(endsAt));
+  }
+  useEffect(() => {
     if (endsAt === null) {
       return;
     }

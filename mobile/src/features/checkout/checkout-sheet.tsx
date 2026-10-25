@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import { Wallet } from 'lucide-react-native';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Modal, Platform, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, {
@@ -43,6 +43,7 @@ export function CheckoutSheet() {
   const walletBalance = useWalletStore((state) => state.available);
   const [visible, setVisible] = useState(false);
   const [paySheet, setPaySheet] = useState<'purchase' | 'topup' | null>(null);
+  const [trackedOpen, setTrackedOpen] = useState(false);
   const { height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const translateY = useSharedValue(height);
@@ -52,17 +53,22 @@ export function CheckoutSheet() {
   const sheetHeight = Math.max(560, Math.round(height * 0.9));
   const open = draft !== null;
 
+  if (open !== trackedOpen) {
+    setTrackedOpen(open);
+    setVisible(open);
+    if (open) {
+      setPaySheet(null);
+    }
+  }
+
   useEffect(() => {
     generation.current += 1;
     closing.current = false;
     if (!open) {
-      setVisible(false);
       return;
     }
-    setVisible(true);
-    setPaySheet(null);
-    translateY.value = sheetHeight;
-    translateY.value = withSpring(0, { damping: 24, stiffness: 240, mass: 0.75 });
+    translateY.set(sheetHeight);
+    translateY.set(withSpring(0, { damping: 24, stiffness: 240, mass: 0.75 }));
   }, [open, sheetHeight, translateY]);
 
   useEffect(() => {
@@ -96,13 +102,13 @@ export function CheckoutSheet() {
     }
     closing.current = true;
     dismissGeneration.current = generation.current;
-    translateY.value = withTiming(sheetHeight, { duration: 240 }, (finished) => {
+    translateY.set(withTiming(sheetHeight, { duration: 240 }, (finished) => {
       if (finished) {
         runOnJS(finishClose)();
       } else {
         runOnJS(releaseDismiss)();
       }
-    });
+    }));
   }
 
   function requestConfirm() {
@@ -565,26 +571,27 @@ function ApplePaySimulator({
   const tick = useSharedValue(0);
   const paid = useRef(false);
   const cancelled = useRef(false);
-
-  useEffect(() => {
-    ring.value = withRepeat(withTiming(1.14, { duration: 680 }), 3, true);
-    tick.value = withDelay(
-      1700,
-      withTiming(1, { duration: 320 }, (finished) => {
-        if (finished) {
-          runOnJS(finish)();
-        }
-      }),
-    );
-  }, [ring, tick]);
-
-  function finish() {
+  const finish = useCallback(() => {
     if (cancelled.current || paid.current) {
       return;
     }
     paid.current = true;
     onPaid();
-  }
+  }, [onPaid]);
+
+  useEffect(() => {
+    ring.set(withRepeat(withTiming(1.14, { duration: 680 }), 3, true));
+    tick.set(
+      withDelay(
+        1700,
+        withTiming(1, { duration: 320 }, (finished) => {
+          if (finished) {
+            runOnJS(finish)();
+          }
+        }),
+      ),
+    );
+  }, [finish, ring, tick]);
 
   function dismiss() {
     cancelled.current = true;

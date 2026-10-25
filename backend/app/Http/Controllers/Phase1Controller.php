@@ -154,6 +154,27 @@ final class Phase1Controller extends Controller
         return new JsonResponse(['data' => $this->scan->paymentMethod($request->user())]);
     }
 
+    public function paymentMethods(Request $request): JsonResponse
+    {
+        return new JsonResponse(['data' => $this->cards->list($request->user())]);
+    }
+
+    public function destroyPaymentMethod(Request $request, string $method): JsonResponse
+    {
+        $this->cards->remove($request->user(), $method);
+
+        return new JsonResponse(null, 204);
+    }
+
+    public function saveTestCard(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'setup_intent_id' => ['required', 'string', 'regex:/^seti_[A-Za-z0-9_]{1,100}$/'],
+        ]);
+
+        return new JsonResponse(['data' => $this->cards->saveTestCard($request->user(), $data['setup_intent_id'])]);
+    }
+
     /** Raw bytes of the upload; base64 is length-checked and strictly decoded (ImageGuard). */
     private function imageBytes(Request $request): string
     {
