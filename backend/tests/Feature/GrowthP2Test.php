@@ -11,6 +11,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
+use PHPUnit\Framework\Attributes\Group;
 use Tests\Support\BuildsCommerce;
 use Tests\Support\BuildsSocial;
 use Tests\TestCase;
@@ -37,6 +38,7 @@ final class GrowthP2Test extends TestCase
         $this->assertFalse(collect($suggestions)->contains('product_id', $miss));
     }
 
+    #[Group('purchases')]
     public function test_synthetic_track_keeps_the_ai_label(): void
     {
         $author = $this->makeUser();
@@ -93,6 +95,7 @@ final class GrowthP2Test extends TestCase
         $this->assertSame(4000, (int) DB::table('price_protections')->where('order_id', $order)->value('refunded_minor'));
     }
 
+    #[Group('purchases')]
     public function test_reviews_and_answers_require_a_verified_purchase(): void
     {
         $buyer = $this->makeUser();
