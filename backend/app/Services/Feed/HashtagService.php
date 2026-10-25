@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\DB;
 final class HashtagService
 {
     public function __construct(private readonly FeedService $feed) {}
+
     /** @return list<array{tag: string, posts: int}> */
     public function search(string $rawQuery): array
     {

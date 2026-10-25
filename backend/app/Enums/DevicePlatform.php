@@ -10,7 +10,7 @@ namespace App\Enums;
  */
 enum DevicePlatform: string
 {
-    case Ios     = 'ios';
+    case Ios = 'ios';
     case Android = 'android';
-    case Web     = 'web';
+    case Web = 'web';
 }

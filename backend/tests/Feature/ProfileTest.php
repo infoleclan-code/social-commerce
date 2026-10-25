@@ -19,8 +19,8 @@ final class ProfileTest extends TestCase
 
     public function test_profile_counts_reels_and_friends_and_hides_a_blocked_account(): void
     {
-        $viewer = $this->makeUser(['bio' => 'City reels']);
-        $friend = $this->makeUser();
+        $viewer = $this->makeUser(['bio' => 'City reels', 'profile_visibility' => 'public']);
+        $friend = $this->makeUser(['profile_visibility' => 'public']);
         $stranger = $this->makeUser();
         $this->befriend($viewer, $friend);
         $this->mediaPost($viewer, 'public');

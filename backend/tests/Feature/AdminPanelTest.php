@@ -53,7 +53,7 @@ final class AdminPanelTest extends TestCase
             'email' => 'admin@example.com',
             'password' => 'correct-horse',
             'otp' => '000000',
-        ])->assertStatus(422)->assertJsonPath('code', 'TOTP_INVALID');
+        ])->assertStatus(422)->assertJsonPath('code', 'AUTH_FAILED');
 
         $this->app['auth']->forgetGuards();
         $token = $this->adminToken();
@@ -162,6 +162,7 @@ final class AdminPanelTest extends TestCase
             'role' => UserRole::Admin,
             'password' => 'correct-horse',
             'totp_secret' => Crypt::encryptString($this->secret),
+            'totp_last_step' => null,
         ])->save();
 
         return $user->refresh();
@@ -176,6 +177,30 @@ final class AdminPanelTest extends TestCase
             'password' => 'correct-horse',
             'otp' => Totp::code($this->secret, intdiv(time(), 30)),
         ])->assertOk()->json('data.token');
+    }
+
+    public function test_a_reused_admin_code_fails_the_same_way_as_a_wrong_password(): void
+    {
+        $this->admin();
+        $code = Totp::code($this->secret, intdiv(time(), 30));
+        $this->postJson('/api/v1/admin/login', [
+            'email' => 'admin@example.com',
+            'password' => 'correct-horse',
+            'otp' => $code,
+        ])->assertOk();
+        $reused = $this->postJson('/api/v1/admin/login', [
+            'email' => 'admin@example.com',
+            'password' => 'correct-horse',
+            'otp' => $code,
+        ])->assertStatus(422);
+        $wrong = $this->postJson('/api/v1/admin/login', [
+            'email' => 'admin@example.com',
+            'password' => 'not-the-password',
+            'otp' => '000000',
+        ])->assertStatus(422);
+        $reused->assertJsonPath('code', 'AUTH_FAILED');
+        $wrong->assertJsonPath('code', 'AUTH_FAILED');
+        $this->assertSame($reused->json('message'), $wrong->json('message'));
     }
 
     private function imagePost(User $author): string

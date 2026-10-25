@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\ApiException;
+use App\Services\Auth\AuthService;
 use App\Services\Commerce\GrowthService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -12,7 +14,7 @@ use Illuminate\Support\Str;
 
 final class GrowthController extends Controller
 {
-    public function __construct(private readonly GrowthService $growth) {}
+    public function __construct(private readonly GrowthService $growth, private readonly AuthService $auth) {}
 
     public function activities(Request $request): JsonResponse
     {
@@ -183,6 +185,7 @@ final class GrowthController extends Controller
 
     public function deleteAccount(Request $request): JsonResponse
     {
+        $this->confirmPassword($request);
         $this->growth->requestDeletion($request->user());
 
         return new JsonResponse(['data' => ['deletion_requested' => true]]);
@@ -190,7 +193,19 @@ final class GrowthController extends Controller
 
     public function export(Request $request): JsonResponse
     {
+        $this->confirmPassword($request);
+
         return new JsonResponse(['data' => $this->growth->export($request->user())]);
+    }
+
+    private function confirmPassword(Request $request): void
+    {
+        $data = $request->validate([
+            'password' => ['required', 'string', 'max:200'],
+        ]);
+        if (! $this->auth->passwordMatches($request->user(), $data['password'])) {
+            throw ApiException::passwordMismatch();
+        }
     }
 
     public function withdraw(Request $request, string $order): JsonResponse

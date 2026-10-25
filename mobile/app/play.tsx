@@ -11,6 +11,7 @@ import { isDefinite, isDefiniteFailure, purchaseErrorCopy, resolutionCopy } from
 import { IntentKeys } from '@/lib/idempotency';
 import { t } from '@/lib/i18n';
 import { formatMoney } from '@/lib/money';
+import { PurchasesGate } from '@/lib/purchases-gate';
 import { palette } from '@/theme/tokens';
 
 export default function PlayScreen() {
@@ -61,6 +62,7 @@ export default function PlayScreen() {
   });
 
   return (
+    <PurchasesGate>
     <View style={{ flex: 1, backgroundColor: palette.ink, padding: 20, paddingTop: 64, gap: 16 }}>
       <Pressable onPress={() => goBackOrTabs(router)}><Text style={{ color: palette.ivory }}>{t('shop.close')}</Text></Pressable>
       {auction.isPending ? <ActivityIndicator color={palette.goldSoft} /> : null}
@@ -87,5 +89,6 @@ export default function PlayScreen() {
         </View>
       ) : null}
     </View>
+    </PurchasesGate>
   );
 }

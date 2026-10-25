@@ -7,6 +7,7 @@ namespace App\Services\Commerce;
 use App\Exceptions\ApiException;
 use App\Models\FeedPost;
 use App\Models\User;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -72,7 +73,7 @@ final class SyntheticMediaService
         return $this->shape($tracks);
     }
 
-    /** @param  \Illuminate\Support\Collection<int, object>  $tracks
+    /** @param  Collection<int, object>  $tracks
      * @return array<string, mixed>
      */
     private function shape($tracks): array

@@ -304,7 +304,7 @@ final class FakePaymentGateway implements PaymentGateway
             if ($intent['status'] !== 'succeeded') {
                 throw new PaymentRejected('payment_intent_unexpected_state');
             }
-            if ($amountMinor < 1 || $intent['amount_refunded'] + $amountMinor > $intent['amount_received']) {
+            if ($amountMinor < 1 || $intent['amount_received'] < $intent['amount_refunded'] + $amountMinor) {
                 throw new PaymentRejected('charge_already_refunded');
             }
             $this->intents[$paymentIntentId]['amount_refunded'] += $amountMinor;

@@ -1,8 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
+import { useState } from 'react';
 
 import { goBackOrTabs } from '@/lib/go-back';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { PurchasesGate } from '@/lib/purchases-gate';
+import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { api, json } from '@/api/client';
 import { t } from '@/lib/i18n';
@@ -35,8 +37,11 @@ export default function GrowScreen() {
     mutationFn: async (job: () => Promise<unknown>) => job(),
     onSuccess: refresh,
   });
+  const [password, setPassword] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   return (
+    <PurchasesGate>
     <ScrollView style={{ flex: 1, backgroundColor: palette.ink }} contentContainerStyle={{ padding: 20, paddingTop: 64, gap: 18 }}>
       <Pressable onPress={() => goBackOrTabs(router)}><Text style={{ color: palette.ivory }}>{t('shop.close')}</Text></Pressable>
       <Text style={{ color: palette.ivory, fontSize: 24, fontWeight: '700' }}>{t('grow.title')}</Text>
@@ -81,21 +86,29 @@ export default function GrowScreen() {
         <Text style={chipText}>{t('grow.limit')}</Text>
       </Pressable>
       <Pressable accessibilityRole="button" onPress={() => run.mutate(() => api('/trust/streaks', json('PUT', { on: !trust.data?.streaks_opt_in })))} style={chip}>
-        <Text style={chipText}>{trust.data?.streaks_opt_in ? 'Turn streaks off' : t('grow.streaks')}</Text>
+        <Text style={chipText}>{trust.data?.streaks_opt_in ? t('grow.streaksOff') : t('grow.streaks')}</Text>
       </Pressable>
       <Pressable accessibilityRole="button" onPress={() => run.mutate(() => api('/trust/mute', json('POST', { channel: 'show' })))} style={chip}>
-        <Text style={chipText}>Mute show reminders</Text>
+        <Text style={chipText}>{t('grow.muteShows')}</Text>
       </Pressable>
-      <Pressable accessibilityRole="button" onPress={() => run.mutate(() => api('/trust/export', json('POST')))} style={chip}>
+      <TextInput accessibilityLabel={t('auth.password')} onChangeText={setPassword} placeholder={t('auth.password')} placeholderTextColor={palette.faint} secureTextEntry style={{ color: palette.ivory, borderColor: palette.line, borderWidth: 1, borderRadius: 12, padding: 10 }} value={password} />
+      <Pressable accessibilityRole="button" onPress={() => run.mutate(() => api('/trust/export', json('POST', { password })))} style={chip}>
         <Text style={chipText}>{t('grow.export')}</Text>
       </Pressable>
       <Pressable accessibilityRole="button" onPress={() => run.mutate(() => api('/trust/pause', json('POST')))} style={chip}>
         <Text style={chipText}>{t('grow.pause')}</Text>
       </Pressable>
-      <Pressable accessibilityRole="button" onPress={() => run.mutate(() => api('/trust/delete', json('POST')))} style={chip}>
-        <Text style={chipText}>{t('grow.leave')}</Text>
-      </Pressable>
+      {confirmDelete ? (
+        <Pressable accessibilityRole="button" onPress={() => run.mutate(() => api('/trust/delete', json('POST', { password })))} style={chip}>
+          <Text style={chipText}>{t('profile.deleteConfirm')}</Text>
+        </Pressable>
+      ) : (
+        <Pressable accessibilityRole="button" onPress={() => setConfirmDelete(true)} style={chip}>
+          <Text style={chipText}>{t('grow.leave')}</Text>
+        </Pressable>
+      )}
     </ScrollView>
+    </PurchasesGate>
   );
 }
 

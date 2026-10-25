@@ -6,6 +6,7 @@ import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import type { ShopOffer } from '@/api/contracts';
 import { saveCartItem } from '@/api/social-commerce';
 import { expectedTotalMinor } from '@/features/payments/expected-total';
+import { purchasesEnabled } from '@/lib/flags';
 import { t } from '@/lib/i18n';
 import { formatMoney } from '@/lib/money';
 import { palette, radius } from '@/theme/tokens';
@@ -84,13 +85,19 @@ export function ShopCard({ offer, busy, couponLabel, onBuy, onSquad, onHold, onG
         ) : null}
         <Text style={{ color: palette.muted, fontSize: 11 }}>{t('shop.shareEarn', { percent: String(offer.commission_bps / 100) })}</Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
-          <Chip disabled={busy || offer.product.stock < 1} label={t('shop.paySolo')} onPress={onBuy} primary />
-          <Chip disabled={busy || offer.product.stock < 1} label={t('shop.holdSquad')} onPress={onSquad} />
-          <Chip disabled={busy || offer.product.stock < 1} label={t('shop.gift')} onPress={onGift} />
-          {offer.drop_hour && offer.drop_hour.remaining > 0 ? <Chip disabled={busy} label={t('shop.dropHold')} onPress={onHold} /> : null}
-          {offer.product.try_on ? <Chip disabled={busy} label={t('shop.tryOn')} onPress={onTryOn} /> : null}
-          <Chip disabled={busy || offer.product.stock < 1} label={t('shop.addCart')} onPress={() => void saveCartItem(offer.product.id, 1)} />
-          <Chip disabled={busy} label={t('shop.reviews')} onPress={() => router.push(`/product/${encodeURIComponent(offer.product.id)}`)} />
+          {purchasesEnabled ? (
+            <>
+              <Chip disabled={busy || offer.product.stock < 1} label={t('shop.paySolo')} onPress={onBuy} primary />
+              <Chip disabled={busy || offer.product.stock < 1} label={t('shop.holdSquad')} onPress={onSquad} />
+              <Chip disabled={busy || offer.product.stock < 1} label={t('shop.gift')} onPress={onGift} />
+              {offer.drop_hour && offer.drop_hour.remaining > 0 ? <Chip disabled={busy} label={t('shop.dropHold')} onPress={onHold} /> : null}
+              {offer.product.try_on ? <Chip disabled={busy} label={t('shop.tryOn')} onPress={onTryOn} /> : null}
+              <Chip disabled={busy || offer.product.stock < 1} label={t('shop.addCart')} onPress={() => void saveCartItem(offer.product.id, 1)} />
+              <Chip disabled={busy} label={t('shop.reviews')} onPress={() => router.push(`/product/${encodeURIComponent(offer.product.id)}`)} />
+            </>
+          ) : (
+            <Chip disabled={busy} label={t('compare.prices')} onPress={() => router.push({ pathname: '/compare', params: { q: offer.product.title } })} primary />
+          )}
           {busy ? <ActivityIndicator color={palette.goldSoft} size="small" /> : null}
         </View>
       </View>

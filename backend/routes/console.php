@@ -22,14 +22,18 @@ Artisan::command('catalog:embed-scans', function (): void {
 | Reel media is deleted with the account (EraseUserMedia).
 */
 
-Schedule::command('payments:capture-due')->everyMinute()->withoutOverlapping(5)->onOneServer();
-Schedule::command('payments:reconcile')->everyMinute()->withoutOverlapping(5)->onOneServer();
-Schedule::command('ledger:release-commissions')->hourly()->withoutOverlapping(30)->onOneServer();
-Schedule::command('price-protection:sweep')->hourly()->withoutOverlapping(30)->onOneServer();
-Schedule::command('gifts:refund-expired')->hourly()->withoutOverlapping(30)->onOneServer();
-Schedule::command('drops:rotate')->everyTenMinutes()->withoutOverlapping(5)->onOneServer();
+if (config('commerce.purchases_enabled')) {
+    Schedule::command('payments:capture-due')->everyMinute()->withoutOverlapping(5)->onOneServer();
+    Schedule::command('payments:reconcile')->everyMinute()->withoutOverlapping(5)->onOneServer();
+    Schedule::command('ledger:release-commissions')->hourly()->withoutOverlapping(30)->onOneServer();
+    Schedule::command('price-protection:sweep')->hourly()->withoutOverlapping(30)->onOneServer();
+    Schedule::command('gifts:refund-expired')->hourly()->withoutOverlapping(30)->onOneServer();
+    Schedule::command('drops:rotate')->everyTenMinutes()->withoutOverlapping(5)->onOneServer();
+}
 Schedule::command('idempotency:prune')->daily()->onOneServer();
 Schedule::command('accounts:anonymize-due')->daily()->onOneServer();
+Schedule::command('db:backup')->dailyAt('02:10')->withoutOverlapping(60)->onOneServer();
+Schedule::command('prices:check-alerts')->hourly()->withoutOverlapping(30)->onOneServer();
 
 Artisan::command('accounts:anonymize-due', function (): void {
     $ids = DB::table('users')

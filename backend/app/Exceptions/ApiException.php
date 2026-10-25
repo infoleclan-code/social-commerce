@@ -306,4 +306,34 @@ final class ApiException extends RuntimeException
     {
         return new self(409, 'FRIEND_REQUEST_CLOSED', 'That friend request cannot be changed.');
     }
+
+    public static function accountUnavailable(): self
+    {
+        return new self(422, 'ACCOUNT_UNAVAILABLE', 'An account with those details is not available.');
+    }
+
+    public static function passwordMismatch(): self
+    {
+        return new self(422, 'PASSWORD_MISMATCH', 'The password does not match.');
+    }
+
+    public static function deviceTokenTaken(): self
+    {
+        return new self(409, 'DEVICE_TOKEN_TAKEN', 'That device is already registered.');
+    }
+
+    public static function compareUnavailable(): self
+    {
+        return new self(503, 'COMPARE_UNAVAILABLE', 'Prices are temporarily unavailable. Nothing older is shown.');
+    }
+
+    public static function offerExpired(): self
+    {
+        return new self(404, 'OFFER_EXPIRED', 'That offer is no longer current. Search again.');
+    }
+
+    public static function wishlistNotFound(): self
+    {
+        return new self(404, 'WISHLIST_NOT_FOUND', 'That saved search does not exist.');
+    }
 }

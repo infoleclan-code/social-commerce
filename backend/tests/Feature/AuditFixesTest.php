@@ -9,6 +9,7 @@ use App\Services\Search\VectorStore;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use Tests\Support\BuildsCommerce;
@@ -204,7 +205,7 @@ final class AuditFixesTest extends TestCase
         $this->postJson('/api/v1/gifts/'.$gift['token'].'/claim', $address)->assertOk()->assertJsonPath('data.address.line', '1 Main St');
         $this->postJson('/api/v1/gifts/'.$gift['token'].'/claim', $address)->assertOk()->assertJsonPath('data.status', 'claimed');
         $stored = DB::table('gifts')->where('token', $gift['token'])->first();
-        $this->assertNull($stored->address_line);
+        $this->assertFalse(Schema::hasColumn('gifts', 'address_line'));
         $this->assertIsString($stored->address_ciphertext);
         $this->assertStringNotContainsString('1 Main St', (string) $stored->address_ciphertext);
 
@@ -247,7 +248,7 @@ final class AuditFixesTest extends TestCase
     public function test_friendship_stays_mutual_and_follows_are_counted_separately(): void
     {
         $ada = $this->makeUser();
-        $bea = $this->makeUser();
+        $bea = $this->makeUser(['profile_visibility' => 'public']);
         Sanctum::actingAs($ada);
         $this->postJson('/api/v1/users/'.$bea->id.'/friend-request')->assertCreated()->assertJsonPath('data.connection', 'pending_out');
         Sanctum::actingAs($bea);
@@ -315,6 +316,7 @@ final class AuditFixesTest extends TestCase
     public function test_pause_unpause_export_and_anonymize_after_the_grace_period(): void
     {
         $user = $this->makeUser();
+        $user->forceFill(['password' => 'correct-horse'])->save();
         $post = (string) Str::uuid7();
         DB::table('feed_posts')->insert([
             'id' => $post,
@@ -330,7 +332,7 @@ final class AuditFixesTest extends TestCase
         Sanctum::actingAs($user);
         $this->postJson('/api/v1/trust/pause')->assertOk()->assertJsonPath('data.paused', true);
         $this->postJson('/api/v1/trust/unpause')->assertOk()->assertJsonPath('data.paused', false);
-        $export = $this->postJson('/api/v1/trust/export')->assertOk()->json('data');
+        $export = $this->postJson('/api/v1/trust/export', ['password' => 'correct-horse'])->assertOk()->json('data');
         $this->assertSame($user->email, $export['user']['email']);
         $this->assertSame($post, $export['posts'][0]['id']);
         $this->assertArrayNotHasKey('expo_push_token', (array) ($export['devices'][0] ?? []));
@@ -339,7 +341,7 @@ final class AuditFixesTest extends TestCase
             'platform' => 'ios',
             'expo_push_token' => 'ExponentPushToken[auditfixdevice01]',
         ])->assertCreated();
-        $this->postJson('/api/v1/trust/delete')->assertOk();
+        $this->postJson('/api/v1/trust/delete', ['password' => 'correct-horse'])->assertOk();
         $this->postJson('/api/v1/trust/unpause')->assertStatus(409);
         $this->assertNull(DB::table('users')->where('id', $user->id)->value('anonymized_at'));
 

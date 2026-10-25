@@ -11,8 +11,8 @@ use App\Services\Commerce\RewardService;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\QueryException;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Comments on posts the viewer can see. Threads are one level deep: top-level comments oldest first,

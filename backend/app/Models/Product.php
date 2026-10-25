@@ -7,7 +7,6 @@ namespace App\Models;
 use App\Enums\ListingStatus;
 use App\Models\Concerns\PostgresModel;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Product extends Model

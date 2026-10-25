@@ -135,10 +135,6 @@ final class HabitScaleService
                 'status' => 'claimed',
                 'claimed_by' => $recipient->id,
                 'claimed_at' => now(),
-                'address_line' => null,
-                'locality' => null,
-                'postal_code' => null,
-                'country' => null,
                 'address_ciphertext' => $this->sealAddress($address),
             ]);
 
@@ -708,16 +704,8 @@ final class HabitScaleService
                 'country' => (string) ($decoded['country'] ?? ''),
             ];
         }
-        if ($gift->address_line === null) {
-            return null;
-        }
 
-        return [
-            'line' => (string) $gift->address_line,
-            'locality' => (string) $gift->locality,
-            'postal_code' => (string) $gift->postal_code,
-            'country' => (string) $gift->country,
-        ];
+        return null;
     }
 
     private function releaseHold(string $paymentIntentId): void

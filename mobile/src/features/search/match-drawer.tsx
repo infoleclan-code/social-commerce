@@ -1,7 +1,8 @@
 import { Image } from 'expo-image';
+import { useRouter } from 'expo-router';
 import { Check } from 'lucide-react-native';
 import { useEffect } from 'react';
-import { Platform, ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import { Platform, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import Animated, { SlideInDown, SlideOutDown, useAnimatedStyle, useSharedValue, withDelay, withSpring } from 'react-native-reanimated';
 
 import { GlassSurface } from '@/components/ui/glass-surface';
@@ -132,6 +133,7 @@ export function MatchDrawer({ offers, source, title, onHeight }: Props) {
 }
 
 function DrawerHeader({ title, source, original }: { title: string; source: OfferSource | null; original: DisplayMoney | null }) {
+  const router = useRouter();
   return (
     <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingTop: 6, paddingBottom: 6 }}>
       <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
@@ -141,6 +143,9 @@ function DrawerHeader({ title, source, original }: { title: string; source: Offe
         <Text numberOfLines={1} style={{ color: palette.ivory, fontSize: 18, fontWeight: '600', letterSpacing: -0.3 }}>
           {title}
         </Text>
+        <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/compare', params: { q: title } })}>
+          <Text style={{ color: palette.goldSoft, fontSize: 13, fontWeight: '700' }}>{t('compare.prices')}</Text>
+        </Pressable>
         <Text numberOfLines={1} style={{ color: palette.faint, fontSize: 12 }}>
           {original ? t('search.storesSortedFrom', { amount: formatMoney(original) }) : t('search.storesSorted')}
         </Text>

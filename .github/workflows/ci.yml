@@ -31,6 +31,9 @@ jobs:
       - name: Install PHP dependencies
         working-directory: backend
         run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Pint
+        working-directory: backend
+        run: vendor/bin/pint --test
       - name: PHPUnit
         working-directory: backend
         env:
@@ -58,3 +61,8 @@ jobs:
         run: |
           npm ci
           npx tsc --noEmit
+          npx eslint .
+      - name: npm audit (report only)
+        working-directory: mobile
+        continue-on-error: true
+        run: npm audit --audit-level=moderate

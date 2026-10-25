@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { ApiError, api, json } from '@/api/client';
 import { goBackOrTabs } from '@/lib/go-back';
 import { t } from '@/lib/i18n';
+import { PurchasesGate } from '@/lib/purchases-gate';
 import { palette } from '@/theme/tokens';
 
 export default function SellScreen() {
@@ -35,6 +36,7 @@ export default function SellScreen() {
   }
 
   return (
+    <PurchasesGate>
     <View style={{ flex: 1, backgroundColor: palette.ink, padding: 20, paddingTop: 64, gap: 12 }}>
       <Pressable accessibilityRole="button" onPress={() => goBackOrTabs(router)}><Text style={{ color: palette.ivory }}>{t('shop.close')}</Text></Pressable>
       <Text style={{ color: palette.ivory, fontSize: 24, fontWeight: '700' }}>{t('sell.title')}</Text>
@@ -58,6 +60,7 @@ export default function SellScreen() {
       </Pressable>
       {note ? <Text style={{ color: palette.goldSoft }}>{note}</Text> : null}
     </View>
+    </PurchasesGate>
   );
 }
 

@@ -22,6 +22,7 @@ import { OrderTracker } from '@/features/closet/order-tracker';
 import { VisualSearch } from '@/features/search/visual-search';
 import { DupeFinderSheet } from '@/features/dupes/dupe-finder-sheet';
 import { OneTapBanner } from '@/features/one-tap/one-tap-banner';
+import { purchasesEnabled } from '@/lib/flags';
 import { stripeBridge } from '@/features/payments/stripe-bridge';
 import { CommentsSheet } from '@/features/reels/comments-sheet';
 import { parseShareToken } from '@/lib/deep-links';
@@ -192,6 +193,7 @@ export default function RootLayout() {
             <Stack.Screen name="cart" />
             <Stack.Screen name="cards" />
             <Stack.Screen name="admin" />
+            <Stack.Screen name="legal" />
             <Stack.Screen name="scan" options={{ animation: 'slide_from_bottom', gestureEnabled: true }} />
             <Stack.Screen name="play" />
             <Stack.Screen name="grow" />
@@ -205,12 +207,12 @@ export default function RootLayout() {
           <SheetNavigationReset />
           <ProductSheet />
           <DupeFinderSheet />
-          <CheckoutSheet />
-          <OrderTracker />
+          {purchasesEnabled ? <CheckoutSheet /> : null}
+          {purchasesEnabled ? <OrderTracker /> : null}
           <DupeSearchOverlay />
           <GlobalSearch />
           <CommentsSheet />
-          <OneTapBanner />
+          {purchasesEnabled ? <OneTapBanner /> : null}
         </ThemeProvider>
       </QueryClientProvider>
     </GestureHandlerRootView>

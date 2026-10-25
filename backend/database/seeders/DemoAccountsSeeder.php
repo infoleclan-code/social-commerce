@@ -5,16 +5,24 @@ declare(strict_types=1);
 namespace Database\Seeders;
 
 use App\Enums\UserRole;
+use App\Enums\Visibility;
 use App\Models\User;
 use App\Support\Totp;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Str;
+use Throwable;
 
-/** Demo buyer, admin, and the account that owns the sample reels. Skipped in production. */
+/**
+ * Demo buyer, admin, and the account that owns the sample reels. Skipped in production.
+ * The admin password and TOTP secret are generated when the admin is created, or when the
+ * stored secret is still the one that used to be committed. They are printed once and are
+ * not written back into the repository.
+ */
 class DemoAccountsSeeder extends Seeder
 {
-    /** Base32 TOTP secret for the seeded admin. Any authenticator app can use it. */
-    public const ADMIN_TOTP_SECRET = 'KZXW6YTBONSWG33OMVZXG33O';
+    /** SHA-256 of the TOTP secret that used to live in this file. The secret itself is not stored. */
+    private const LEAKED_TOTP_SHA256 = 'ad60f5c7cadacad330ed4aa4d41086952f92a80215184f3cafdcf3dc6eb9c7ac';
 
     public function run(): void
     {
@@ -22,16 +30,65 @@ class DemoAccountsSeeder extends Seeder
             return;
         }
 
-        $this->account('buyer@example.com', 'demo_buyer', 'Demo Buyer', false);
-        $admin = $this->account('admin@example.com', 'demo_admin', 'Demo Admin', true);
-        $admin->forceFill([
-            'role' => UserRole::Admin,
-            'totp_secret' => Crypt::encryptString(self::ADMIN_TOTP_SECRET),
-        ])->save();
-        $this->account('reels@example.com', 'demo_reels', 'Demo Reels', true);
+        $buyer = $this->account('buyer@example.com', 'demo_buyer', 'Demo Buyer', false);
+        $admin = $this->adminAccount();
+        $reels = $this->account('reels@example.com', 'demo_reels', 'Demo Reels', true);
+        foreach ([$buyer, $admin, $reels] as $user) {
+            if ($user->profile_visibility !== Visibility::Public) {
+                $user->forceFill(['profile_visibility' => Visibility::Public])->save();
+            }
+        }
+    }
 
-        $this->command?->info('Demo accounts are ready. Admin TOTP secret: '.self::ADMIN_TOTP_SECRET);
-        $this->command?->info('Current admin code: '.Totp::code(self::ADMIN_TOTP_SECRET, intdiv(time(), 30)));
+    private function adminAccount(): User
+    {
+        $existing = User::query()->whereRaw('email = ?', ['admin@example.com'])->first();
+        if ($existing !== null && ! $this->leaked($existing)) {
+            $existing->forceFill([
+                'role' => UserRole::Admin,
+                'username' => 'demo_admin',
+            ])->save();
+
+            return $existing;
+        }
+
+        $password = Str::password(20, symbols: false);
+        $secret = Totp::secret();
+        $user = $existing ?? User::query()->create([
+            'email' => 'admin@example.com',
+            'password' => $password,
+            'username' => 'demo_admin',
+            'display_name' => 'Demo Admin',
+            'social_feed_enabled' => true,
+        ]);
+        $user->forceFill([
+            'role' => UserRole::Admin,
+            'password' => $password,
+            'totp_secret' => Crypt::encryptString($secret),
+            'totp_last_step' => null,
+            'social_feed_enabled' => true,
+        ])->save();
+
+        $this->command?->warn('Admin bootstrap (shown once; not stored in git):');
+        $this->command?->warn('email=admin@example.com');
+        $this->command?->warn('password='.$password);
+        $this->command?->warn('totp_secret='.$secret);
+
+        return $user;
+    }
+
+    private function leaked(User $user): bool
+    {
+        if (! is_string($user->totp_secret) || $user->totp_secret === '') {
+            return true;
+        }
+        try {
+            $secret = Crypt::decryptString($user->totp_secret);
+        } catch (Throwable) {
+            return true;
+        }
+
+        return hash_equals(self::LEAKED_TOTP_SHA256, hash('sha256', $secret));
     }
 
     private function account(string $email, string $username, string $name, bool $social): User

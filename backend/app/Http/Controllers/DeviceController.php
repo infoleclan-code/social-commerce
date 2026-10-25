@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\ApiException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -22,6 +23,9 @@ final class DeviceController extends Controller
         ]);
         $user = $request->user();
         $existing = DB::table('user_devices')->where('expo_push_token', $data['expo_push_token'])->first();
+        if ($existing !== null && (string) $existing->user_id !== (string) $user->id) {
+            throw ApiException::deviceTokenTaken();
+        }
         if ($existing === null) {
             $id = (string) Str::uuid7();
             DB::table('user_devices')->insert([

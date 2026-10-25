@@ -19,6 +19,7 @@ use App\Services\Payments\PaymentGatewayUnavailable;
 use App\Services\Payments\PaymentRejected;
 use App\Support\Currency;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -393,7 +394,7 @@ final class AdminService
         }
     }
 
-    /** @return \Illuminate\Database\Query\Builder */
+    /** @return Builder */
     private function postQuery(string $postId)
     {
         return DB::table('feed_posts')->where('id', $postId)->whereNull('deleted_at')->when(

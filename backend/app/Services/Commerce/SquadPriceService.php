@@ -8,6 +8,7 @@ use App\Exceptions\ApiException;
 use App\Models\User;
 use App\Services\Payments\PaymentStep;
 use App\Support\Currency;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -175,7 +176,7 @@ final class SquadPriceService
         DB::table('squad_members')->where('squad_id', $squadId)->where('user_id', $userId)->delete();
     }
 
-    private static function qualifyingOrders(string $squadId): \Illuminate\Database\Query\Builder
+    private static function qualifyingOrders(string $squadId): Builder
     {
         return DB::table('orders')
             ->where('squad_id', $squadId)

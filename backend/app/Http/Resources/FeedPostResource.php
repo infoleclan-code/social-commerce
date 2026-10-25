@@ -160,5 +160,4 @@ final class FeedPostResource extends JsonResource
             'price' => Currency::money((int) $hour->price_minor, $currency),
         ];
     }
-
 }

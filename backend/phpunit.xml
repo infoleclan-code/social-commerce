@@ -26,5 +26,9 @@
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
+        <env name="COMMERCE_PURCHASES" value="true"/>
+        <env name="COMPARE_PROVIDER" value="fake"/>
+        <env name="AUTH_COOKIE_SECURE" value="false"/>
+        <env name="AUTH_COOKIE_SAME_SITE" value="lax"/>
     </php>
 </phpunit>

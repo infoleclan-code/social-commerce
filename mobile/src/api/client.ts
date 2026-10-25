@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 import { readAuthToken } from '@/lib/auth-token';
 import { parseHttpUrl } from '@/lib/safe-url';
 
@@ -256,6 +258,10 @@ export async function api<T>(path: string, init: RequestInit = {}, options: ApiO
   const method = (init.method ?? 'GET').toUpperCase();
   const headers = new Headers(init.headers);
   headers.set('Accept', 'application/json');
+  if (Platform.OS === 'web') {
+    headers.set('X-Requested-With', 'XMLHttpRequest');
+    headers.set('X-Client', 'web');
+  }
   const token = options.token !== undefined ? options.token : await readAuthToken();
   if (token) {
     headers.set('Authorization', `Bearer ${token}`);
@@ -274,7 +280,7 @@ export async function api<T>(path: string, init: RequestInit = {}, options: ApiO
       throw abortError();
     }
     try {
-      return await attemptOnce<T>(url, { ...init, method, headers }, timeoutMs, callerSignal);
+      return await attemptOnce<T>(url, { ...init, method, headers, credentials: Platform.OS === 'web' ? 'include' : 'omit' }, timeoutMs, callerSignal);
     } catch (failure) {
       if (isAbort(failure)) {
         throw failure;

@@ -64,17 +64,18 @@ function migrateLegacyToken(): Promise<void> {
 
 const WEB_KEY = 'auth_token.v2';
 
-function readWebToken(): string | null {
-  if (typeof sessionStorage === 'undefined') {
-    return null;
+function clearWebToken(): void {
+  if (typeof sessionStorage !== 'undefined') {
+    sessionStorage.removeItem(WEB_KEY);
   }
-  return validToken(sessionStorage.getItem(WEB_KEY));
 }
 
 /** The signed-in user's Sanctum token, or null. Never throws: an unreadable store means "signed out". */
 export async function readAuthToken(): Promise<string | null> {
   if (Platform.OS === 'web') {
-    return readWebToken() ?? developmentToken();
+    // The web session lives in an HttpOnly cookie. Drop any token an older build left in sessionStorage.
+    clearWebToken();
+    return developmentToken();
   }
   await migrateLegacyToken();
   try {
@@ -94,7 +95,7 @@ export async function writeAuthToken(token: string): Promise<void> {
     throw new Error('Refusing to store a malformed auth token.');
   }
   if (Platform.OS === 'web') {
-    sessionStorage.setItem(WEB_KEY, valid);
+    clearWebToken();
     return;
   }
   await store(valid);
@@ -102,8 +103,8 @@ export async function writeAuthToken(token: string): Promise<void> {
 }
 
 export async function clearAuthToken(): Promise<void> {
-  if (Platform.OS === 'web' && typeof sessionStorage !== 'undefined') {
-    sessionStorage.removeItem(WEB_KEY);
+  if (Platform.OS === 'web') {
+    clearWebToken();
   }
   await Promise.all([
     SecureStore.deleteItemAsync(AUTH_TOKEN_KEY, OPTIONS).catch(() => undefined),

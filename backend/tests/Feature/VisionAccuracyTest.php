@@ -6,6 +6,7 @@ namespace Tests\Feature;
 
 use App\Services\Media\ImageEmbedding;
 use App\Services\Media\StructureEmbedding;
+use App\Services\Vision\RemoteVisionDescriber;
 use App\Services\Vision\VisionDescriber;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -21,7 +22,7 @@ final class VisionAccuracyTest extends TestCase
 
     public function test_orange_slides_are_not_returned_as_red_running_shoes(): void
     {
-        $this->assertSame('footwear.slides', \App\Services\Vision\RemoteVisionDescriber::category('Footwear/Slides'));
+        $this->assertSame('footwear.slides', RemoteVisionDescriber::category('Footwear/Slides'));
         $jacketA = $this->garment('Night jacket', 'apparel.jacket', 9600);
         $jacketB = $this->garment('Night jacket', 'apparel.jacket', 10900);
         $jacketC = $this->garment('City coat', 'apparel.coat', 24000);

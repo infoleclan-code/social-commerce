@@ -3,10 +3,10 @@ import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { Clapperboard, Play, UserRound } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, Text, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ApiError } from '@/api/client';
+import { ApiError, api, json } from '@/api/client';
 import type { FeedPost, StoreProduct, UserProfile } from '@/api/contracts';
 import { queryKeys } from '@/api/keys';
 import { acceptFriend, blockUser, declineFriend, fetchCloset, fetchLedger, fetchProfile, fetchRewards, fetchRitual, fetchStore, fetchUserPosts, followUser, logoutAccount, requestFriend, unfollowUser, checkIn, completeMission, listClosetItem, openLootBox, spinPrize, type ClosetRow, type Ritual } from '@/api/social-commerce';
@@ -14,6 +14,7 @@ import { useSession } from '@/stores/session';
 import { EmptyHero } from '@/components/ui/empty-hero';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { feedPosts } from '@/features/reels/use-reels';
+import { purchasesEnabled } from '@/lib/flags';
 import { goBackOrTabs } from '@/lib/go-back';
 import { t } from '@/lib/i18n';
 import { formatMoney } from '@/lib/money';
@@ -207,6 +208,12 @@ export function ProfileScreen({ userId }: Props) {
       onCart={() => router.push('/cart')}
       onCards={() => router.push('/cards')}
       onAdmin={() => router.push('/admin')}
+      onCompare={() => router.push('/compare')}
+      onLegal={() => router.push('/legal')}
+      onDelete={async (password) => {
+        await api('/trust/delete', json('POST', { password }));
+        await leave();
+      }}
       onLogout={() => void leave()}
       onFriend={(action) => void changeFriend(action)}
       onFollow={(already) => void changeFollow(already)}
@@ -328,6 +335,9 @@ function ProfileHeader({
   onCart,
   onCards,
   onAdmin,
+  onCompare,
+  onLegal,
+  onDelete,
   onLogout,
   onFriend,
   onFollow,
@@ -355,6 +365,9 @@ function ProfileHeader({
   onCart: () => void;
   onCards: () => void;
   onAdmin: () => void;
+  onCompare: () => void;
+  onLegal: () => void;
+  onDelete: (password: string) => Promise<void>;
   onLogout: () => void;
   onFriend: (action: 'request' | 'accept' | 'decline' | 'block') => void;
   onFollow: (alreadyFollowing: boolean) => void;
@@ -403,31 +416,15 @@ function ProfileHeader({
         ) : null}
         <FriendActions friendNote={friendNote} onFollow={onFollow} onFriend={onFriend} person={person} />
         {person.viewer.is_self ? (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
-            <Pressable accessibilityRole="button" onPress={onOrders} style={pill}>
-              <Text style={pillText}>{t('profile.orders')}</Text>
-            </Pressable>
-            <Pressable accessibilityRole="button" onPress={onCart} style={pill}>
-              <Text style={pillText}>{t('profile.cart')}</Text>
-            </Pressable>
-            <Pressable accessibilityRole="button" accessibilityLabel={t('profile.cards')} onPress={onCards} style={pill}>
-              <Text style={pillText}>{t('profile.cards')}</Text>
-            </Pressable>
-            <Pressable accessibilityRole="button" accessibilityLabel={t('profile.admin')} onPress={onAdmin} style={pill}>
-              <Text style={pillText}>{t('profile.admin')}</Text>
-            </Pressable>
-            <Pressable accessibilityRole="button" onPress={onLogout} style={pill}>
-              <Text style={pillText}>{t('profile.logout')}</Text>
-            </Pressable>
-          </View>
+          <AccountActions onAdmin={onAdmin} onCards={onCards} onCart={onCart} onCompare={onCompare} onDelete={onDelete} onLegal={onLegal} onLogout={onLogout} onOrders={onOrders} />
         ) : null}
       </View>
       <View style={{ flexDirection: 'row', gap: 16 }}>
         <TabLabel active={tab === 'reels'} label={t('profile.reelsTab')} onPress={() => onTab('reels')} />
-        <TabLabel active={tab === 'store'} label={t('profile.store')} onPress={() => onTab('store')} />
-        {person.viewer.is_self ? <TabLabel active={tab === 'closet'} label={t('profile.closetTab')} onPress={() => onTab('closet')} /> : null}
+        {purchasesEnabled ? <TabLabel active={tab === 'store'} label={t('profile.store')} onPress={() => onTab('store')} /> : null}
+        {purchasesEnabled && person.viewer.is_self ? <TabLabel active={tab === 'closet'} label={t('profile.closetTab')} onPress={() => onTab('closet')} /> : null}
       </View>
-      {person.viewer.is_self && ritual ? (
+      {purchasesEnabled && person.viewer.is_self && ritual ? (
         <View style={{ gap: 8 }}>
           <Text style={{ color: palette.ivory, fontSize: 14 }}>{t('ritual.streak', { count: String(ritual.streak) })}</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
@@ -452,7 +449,7 @@ function ProfileHeader({
           <Text style={{ color: palette.muted, fontSize: 12 }}>{ritual.spin.odds.map((odd) => `${odd.label} ${odd.percent}%`).join(' · ')}</Text>
         </View>
       ) : null}
-      {person.viewer.is_self && coins !== null && xp !== null && cashLabel !== null ? (
+      {purchasesEnabled && person.viewer.is_self && coins !== null && xp !== null && cashLabel !== null ? (
         <View style={{ gap: 8 }}>
           <Text style={{ color: palette.ivory, fontSize: 14 }}>
             {t('profile.coins', { count: String(coins) })} · {t('profile.xp', { count: String(xp) })} · {cashLabel}
@@ -465,6 +462,88 @@ function ProfileHeader({
           {ledgerLabel ? <Text style={{ color: palette.ivory, fontSize: 13 }}>{ledgerLabel}</Text> : null}
         </View>
       ) : null}
+    </View>
+  );
+}
+
+function AccountActions({
+  onAdmin,
+  onCards,
+  onCart,
+  onCompare,
+  onDelete,
+  onLegal,
+  onLogout,
+  onOrders,
+}: {
+  onAdmin: () => void;
+  onCards: () => void;
+  onCart: () => void;
+  onCompare: () => void;
+  onDelete: (password: string) => Promise<void>;
+  onLegal: () => void;
+  onLogout: () => void;
+  onOrders: () => void;
+}) {
+  const [logoutArmed, setLogoutArmed] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [password, setPassword] = useState('');
+  const [note, setNote] = useState<string | null>(null);
+
+  return (
+    <View style={{ gap: 8, marginTop: 8 }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        <Pressable accessibilityRole="button" onPress={onCompare} style={pill}>
+          <Text style={pillText}>{t('compare.prices')}</Text>
+        </Pressable>
+        {purchasesEnabled ? (
+          <>
+            <Pressable accessibilityRole="button" onPress={onOrders} style={pill}>
+              <Text style={pillText}>{t('profile.orders')}</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" onPress={onCart} style={pill}>
+              <Text style={pillText}>{t('profile.cart')}</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel={t('profile.cards')} onPress={onCards} style={pill}>
+              <Text style={pillText}>{t('profile.cards')}</Text>
+            </Pressable>
+          </>
+        ) : null}
+        <Pressable accessibilityRole="button" accessibilityLabel={t('profile.admin')} onPress={onAdmin} style={pill}>
+          <Text style={pillText}>{t('profile.admin')}</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" onPress={onLegal} style={pill}>
+          <Text style={pillText}>{t('profile.legal')}</Text>
+        </Pressable>
+        {logoutArmed ? (
+          <>
+            <Pressable accessibilityRole="button" onPress={onLogout} style={pill}>
+              <Text style={pillText}>{t('profile.confirmLogoutYes')}</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" onPress={() => setLogoutArmed(false)} style={pill}>
+              <Text style={pillText}>{t('profile.cancel')}</Text>
+            </Pressable>
+          </>
+        ) : (
+          <Pressable accessibilityRole="button" onPress={() => setLogoutArmed(true)} style={pill}>
+            <Text style={pillText}>{t('profile.logout')}</Text>
+          </Pressable>
+        )}
+        <Pressable accessibilityRole="button" onPress={() => setDeleteOpen((open) => !open)} style={pill}>
+          <Text style={pillText}>{t('profile.delete')}</Text>
+        </Pressable>
+      </View>
+      {deleteOpen ? (
+        <View style={{ gap: 8 }}>
+          <Text style={{ color: palette.muted }}>{t('profile.deleteBody')}</Text>
+          <TextInput accessibilityLabel={t('auth.password')} onChangeText={setPassword} placeholder={t('auth.password')} placeholderTextColor={palette.faint} secureTextEntry style={{ color: palette.ivory, borderColor: palette.line, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10 }} value={password} />
+          <Pressable accessibilityRole="button" onPress={() => void onDelete(password).catch((error: unknown) => setNote(error instanceof ApiError ? t('profile.delete') : t('profile.errorTitle')))} style={pill}>
+            <Text style={pillText}>{t('profile.deleteConfirm')}</Text>
+          </Pressable>
+        </View>
+      ) : null}
+      {logoutArmed ? <Text style={{ color: palette.muted }}>{t('profile.confirmLogout')}</Text> : null}
+      {note ? <Text style={{ color: palette.goldSoft }}>{note}</Text> : null}
     </View>
   );
 }

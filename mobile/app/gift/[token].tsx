@@ -9,6 +9,7 @@ import { ApiError } from '@/api/client';
 import { claimGift, fetchGift } from '@/api/social-commerce';
 import { purchaseErrorCopy } from '@/features/payments/purchase-copy';
 import { t } from '@/lib/i18n';
+import { PurchasesGate } from '@/lib/purchases-gate';
 import { palette } from '@/theme/tokens';
 
 /** Gift links carry a 24-character random token. Anything else is not sent to the API at all. */
@@ -51,6 +52,7 @@ export default function GiftClaimScreen() {
   });
 
   return (
+    <PurchasesGate>
     <View style={{ flex: 1, backgroundColor: palette.ink, padding: 20, gap: 12, paddingTop: 64 }}>
       <Pressable onPress={() => goBackOrTabs(router)}><Text style={{ color: palette.ivory }}>{t('shop.close')}</Text></Pressable>
       {token === null ? <Text style={{ color: palette.goldSoft }}>{t('gift.closed')}</Text> : null}
@@ -75,6 +77,7 @@ export default function GiftClaimScreen() {
       ) : null}
       {note ? <Text style={{ color: palette.goldSoft }}>{note}</Text> : null}
     </View>
+    </PurchasesGate>
   );
 }
 

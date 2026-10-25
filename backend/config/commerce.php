@@ -11,6 +11,9 @@ declare(strict_types=1);
 */
 
 return [
+    // In-app checkout stays off unless a deploy sets COMMERCE_PURCHASES=true.
+    'purchases_enabled' => filter_var(env('COMMERCE_PURCHASES', false), FILTER_VALIDATE_BOOLEAN),
+
     // Seconds between authorization and capture during which the buyer can undo for free.
     'undo_seconds' => (int) env('COMMERCE_UNDO_SECONDS', 120),
 

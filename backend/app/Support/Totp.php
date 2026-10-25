@@ -14,24 +14,31 @@ final class Totp
 
     public static function verify(string $secret, string $code, int $window = 1, ?int $now = null): bool
     {
+        return self::matchedStep($secret, $code, $window, $now) !== null;
+    }
+
+    /** The 30-second step that matched, so a code cannot be accepted twice. */
+    public static function matchedStep(string $secret, string $code, int $window = 1, ?int $now = null): ?int
+    {
         if (preg_match('/^[0-9]{6}$/', $code) !== 1) {
-            return false;
+            return null;
         }
         $counter = intdiv($now ?? time(), 30);
         for ($offset = -$window; $offset <= $window; $offset++) {
-            if (hash_equals(self::code($secret, $counter + $offset), $code)) {
-                return true;
+            $step = $counter + $offset;
+            if (hash_equals(self::code($secret, $step), $code)) {
+                return $step;
             }
         }
 
-        return false;
+        return null;
     }
 
     public static function code(string $secret, int $counter): string
     {
         $hash = hash_hmac('sha1', pack('N*', 0).pack('N*', $counter), self::decode($secret), true);
-        $offset = ord($hash[19]) & 0x0f;
-        $value = unpack('N', substr($hash, $offset, 4))[1] & 0x7fffffff;
+        $offset = ord($hash[19]) & 0x0F;
+        $value = unpack('N', substr($hash, $offset, 4))[1] & 0x7FFFFFFF;
 
         return str_pad((string) ($value % 1_000_000), 6, '0', STR_PAD_LEFT);
     }
@@ -75,4 +82,4 @@ final class Totp
 
         return $bytes;
     }
-};
+}

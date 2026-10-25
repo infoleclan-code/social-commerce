@@ -12,6 +12,8 @@ import { t } from '@/lib/i18n';
 import { formatMoney } from '@/lib/money';
 import { palette } from '@/theme/tokens';
 
+import { PurchasesGate } from '@/lib/purchases-gate';
+
 export default function OrdersScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -19,6 +21,7 @@ export default function OrdersScreen() {
   const [note, setNote] = useState<string | null>(null);
 
   return (
+    <PurchasesGate>
     <ScrollView contentContainerStyle={{ padding: 20, paddingTop: 64, gap: 14, paddingBottom: 48 }} style={{ flex: 1, backgroundColor: palette.ink }}>
       <Pressable accessibilityLabel={t('orders.back')} accessibilityRole="button" onPress={() => goBackOrTabs(router)}>
         <Text style={{ color: palette.ivory }}>{t('orders.back')}</Text>
@@ -45,6 +48,7 @@ export default function OrdersScreen() {
       ))}
       {note ? <Text style={{ color: palette.goldSoft }}>{note}</Text> : null}
     </ScrollView>
+    </PurchasesGate>
   );
 }
 

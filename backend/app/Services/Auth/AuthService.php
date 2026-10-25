@@ -7,11 +7,14 @@ namespace App\Services\Auth;
 use App\Enums\RiskStatus;
 use App\Enums\UserRole;
 use App\Exceptions\ApiException;
+use App\Mail\AccountWelcome;
 use App\Models\User;
 use App\Support\Totp;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 use Throwable;
 
 /**
@@ -32,6 +35,12 @@ final class AuthService
             'social_feed_enabled' => false,
         ]);
 
+        try {
+            Mail::to($user->email)->send(new AccountWelcome((string) $user->display_name));
+        } catch (Throwable) {
+            // Opening the account does not depend on the welcome note.
+        }
+
         return $this->issue($user);
     }
 
@@ -39,7 +48,7 @@ final class AuthService
     public function login(string $email, string $password): array
     {
         $user = User::query()->whereRaw('email = ?', [$email])->first();
-        if ($user === null || ! is_string($user->password) || ! Hash::check($password, $user->password)) {
+        if (! $this->passwordMatches($user, $password)) {
             throw ApiException::authFailed();
         }
         if ($user->risk_status === RiskStatus::Banned) {
@@ -52,6 +61,14 @@ final class AuthService
         return $this->issue($user);
     }
 
+    public function passwordMatches(?User $user, string $password): bool
+    {
+        $hash = is_string($user?->password) && $user->password !== '' ? $user->password : $this->dummyHash();
+        $matches = Hash::check($password, $hash);
+
+        return $user !== null && $matches;
+    }
+
     /**
      * A separate admin session. The password is checked first. The one-time code is a TOTP from the
      * admin's secret, or the local demo code when ADMIN_DEMO_OTP is set outside production.
@@ -61,14 +78,22 @@ final class AuthService
     public function loginAdmin(string $email, string $password, string $otp): array
     {
         $user = User::query()->whereRaw('email = ?', [$email])->first();
-        if ($user === null || $user->role !== UserRole::Admin || ! is_string($user->password) || ! Hash::check($password, $user->password)) {
+        $passwordOk = $this->passwordMatches($user, $password);
+        $code = trim($otp);
+        $step = Totp::matchedStep($this->totpSecret($user), $code);
+        $demoOk = $this->demoOtpOk($user, $code);
+        $replay = $user !== null && $step !== null && $user->totp_last_step !== null && $step <= (int) $user->totp_last_step;
+        $eligible = $user !== null
+            && $passwordOk
+            && $user->role === UserRole::Admin
+            && $user->anonymized_at === null
+            && $user->deleted_at === null
+            && $user->risk_status !== RiskStatus::Banned;
+        if (! $eligible || $replay || ($step === null && ! $demoOk)) {
             throw ApiException::authFailed();
         }
-        if ($user->anonymized_at !== null || $user->deleted_at !== null || $user->risk_status === RiskStatus::Banned) {
-            throw ApiException::accountBanned();
-        }
-        if (! $this->otpOk($user, trim($otp))) {
-            throw ApiException::totpInvalid();
+        if ($step !== null) {
+            $user->forceFill(['totp_last_step' => $step])->save();
         }
 
         return $this->issue($user, 'admin', ['admin']);
@@ -110,21 +135,40 @@ final class AuthService
         ];
     }
 
-    private function otpOk(User $user, string $otp): bool
+    /** A fixed secret so a missing admin still pays for a TOTP check. */
+    private const DUMMY_TOTP_SECRET = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP';
+
+    private function dummyHash(): string
     {
-        $stored = $user->totp_secret;
+        static $hash = null;
+
+        return $hash ??= Hash::make('not-a-user-password');
+    }
+
+    private function totpSecret(?User $user): string
+    {
+        $stored = $user?->totp_secret;
         if (is_string($stored) && $stored !== '') {
             try {
                 $secret = Crypt::decryptString($stored);
+                if ($secret !== '') {
+                    return $secret;
+                }
             } catch (Throwable) {
-                $secret = '';
-            }
-            if ($secret !== '' && Totp::verify($secret, $otp)) {
-                return true;
+                // Keep going with the dummy secret.
             }
         }
-        $demo = (string) config('admin.demo_otp');
 
-        return $demo !== '' && ! app()->environment('production') && hash_equals($demo, $otp);
+        return self::DUMMY_TOTP_SECRET;
+    }
+
+    private function demoOtpOk(?User $user, string $otp): bool
+    {
+        $demo = (string) config('admin.demo_otp');
+        if ($user === null || $demo === '' || app()->environment('production') || ! hash_equals($demo, $otp)) {
+            return false;
+        }
+
+        return Cache::add('admin-demo-otp:'.$user->id.':'.intdiv(time(), 30), 1, 90);
     }
 }

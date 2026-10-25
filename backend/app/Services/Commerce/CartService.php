@@ -130,10 +130,14 @@ final class CartService
 
     public function deleteAddress(User $user, string $addressId): void
     {
-        $deleted = DB::table('shipping_addresses')->where('id', $addressId)->where('user_id', $user->id)->delete();
-        if ($deleted !== 1) {
-            throw ApiException::addressNotFound();
-        }
+        DB::transaction(function () use ($user, $addressId): void {
+            $address = DB::table('shipping_addresses')->where('id', $addressId)->where('user_id', $user->id)->first();
+            if ($address === null) {
+                throw ApiException::addressNotFound();
+            }
+            DB::table('orders')->where('shipping_address_id', $addressId)->update(['shipping_address_id' => null]);
+            DB::table('shipping_addresses')->where('id', $addressId)->delete();
+        });
     }
 
     /** @return array<string, mixed> */
