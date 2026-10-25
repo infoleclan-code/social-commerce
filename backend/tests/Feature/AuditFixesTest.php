@@ -103,6 +103,7 @@ final class AuditFixesTest extends TestCase
             'product_id' => $product,
             'start_minor' => 1_000,
             'current_minor' => 1_000,
+            'starts_at' => now()->subMinute(),
             'ends_at' => now()->addHour(),
             'created_at' => now(),
         ]);
