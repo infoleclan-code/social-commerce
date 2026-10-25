@@ -13,7 +13,10 @@ use Illuminate\Contracts\Auth\Middleware\AuthenticatesRequests;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Http\Request;
+use Illuminate\Session\Middleware\StartSession;
+use Illuminate\View\Middleware\ShareErrorsFromSession;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -28,6 +31,13 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->redirectGuestsTo(fn (Request $request) => $request->is('api/*') || $request->expectsJson() ? null : '/');
         $middleware->api(prepend: [
             AuthenticateFromCookie::class,
+        ]);
+        // The API is stateless. A database session store would persist IP and user agent, and
+        // /up must answer even when that store is absent.
+        $middleware->web(remove: [
+            StartSession::class,
+            ShareErrorsFromSession::class,
+            ValidateCsrfToken::class,
         ]);
         // Auth is in the priority list, so it would run before the purchases gate and answer 401.
         $middleware->prependToPriorityList(

@@ -247,6 +247,8 @@ final class CompareLaunchTest extends TestCase
     public function test_health_checks_the_database(): void
     {
         $this->getJson('/up')->assertOk()->assertJsonPath('status', 'up');
+        config(['session.driver' => 'database']);
+        $this->get('/up', ['Accept' => 'text/html'])->assertOk()->assertJsonPath('status', 'up');
     }
 
     /** @return array<string, string> */
