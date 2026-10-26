@@ -45,7 +45,7 @@ export function ListsScreen() {
         <View key={list.id} style={{ gap: 8, padding: 12, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.06)' }}>
           <Text style={{ color: palette.ivory, fontWeight: '700' }}>{list.title}</Text>
           <Text style={{ color: palette.muted }}>{list.token}</Text>
-          <Text style={{ color: palette.goldSoft }}>{t('guide.pledgeTotal', { amount: formatMoney({ amount_minor: list.pledge_total_minor, currency: list.currency, minor_unit: 2 }) })}</Text>
+          <Text style={{ color: palette.goldSoft }}>{t('guide.pledgeTotal', { amount: formatMoney({ amount_minor: list.pledge_total_minor, currency: list.currency, minor_unit: list.minor_unit ?? 2 }) })}</Text>
           {list.items.map((row) => (
             <View key={row.id} style={{ gap: 4 }}>
               <Text style={{ color: palette.ivory }}>{row.query} · {row.votes_up} / {row.votes_down}</Text>

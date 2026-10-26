@@ -110,10 +110,23 @@ final class DiscoverController extends Controller
             'in_stock' => true,
             'sort' => 'total_asc',
             'currency' => $this->currency($data['currency'] ?? 'USD'),
-            'country' => Region::country(is_string($data['country'] ?? null) ? $data['country'] : null)
-                ?? Region::country($request->user()?->shop_country)
-                ?? Region::detect($request),
+            'country' => $this->country($request, $data['country'] ?? null),
         ];
+    }
+
+    private function country(Request $request, mixed $value): string
+    {
+        if (is_string($value) && trim($value) !== '') {
+            $code = Region::country($value);
+            if ($code === null) {
+                throw ValidationException::withMessages(['country' => 'Choose a listed country.']);
+            }
+
+            return $code;
+        }
+
+        return Region::country($request->user()?->shop_country)
+            ?? Region::detect($request);
     }
 
     private function currency(mixed $value): string

@@ -288,7 +288,7 @@ final class CompareLaunchTest extends TestCase
                         'price_minor' => 9_000,
                         'shipping_minor' => 0,
                         'shipping_known' => true,
-                        'currency' => 'JPY',
+                        'currency' => 'XXX',
                         'availability' => 'in_stock',
                     ],
                     [
@@ -309,8 +309,9 @@ final class CompareLaunchTest extends TestCase
         });
         Sanctum::actingAs($this->makeUser());
         $offers = $this->getJson('/api/v1/compare?q=nike%20sneakers&currency=EUR')->assertOk()->json('data.products.0.offers');
-        $this->assertSame(['Unknown Mart', 'Known Mart'], array_column($offers, 'store'));
-        $this->assertFalse($offers[0]['shipping_known']);
+        $this->assertSame(['Known Mart', 'Unknown Mart'], array_column($offers, 'store'));
+        $this->assertTrue($offers[0]['shipping_known']);
+        $this->assertFalse($offers[1]['shipping_known']);
         $this->assertSame('EUR', $offers[0]['currency']);
         $this->assertSame('EUR', $this->getJson('/api/v1/compare?q=nike%20sneakers&currency=EUR')->json('data.currency'));
     }

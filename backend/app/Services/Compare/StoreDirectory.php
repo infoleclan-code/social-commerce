@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Compare;
 
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 
 /** Store rating from the provider, plus an admin flag or block. */
@@ -43,14 +44,30 @@ final class StoreDirectory
             $reviews = $reviews ?? ($row->review_count !== null ? (int) $row->review_count : null);
             $status = (string) $row->status;
         } elseif ($rating !== null || $reviews !== null) {
-            DB::table('store_reputations')->insert([
-                'host' => $host,
-                'rating' => $rating,
-                'review_count' => $reviews,
-                'status' => 'open',
-                'updated_at' => now(),
-            ]);
-            $status = 'open';
+            try {
+                DB::transaction(function () use ($host, $rating, $reviews): void {
+                    DB::table('store_reputations')->insert([
+                        'host' => $host,
+                        'rating' => $rating,
+                        'review_count' => $reviews,
+                        'status' => 'open',
+                        'updated_at' => now(),
+                    ]);
+                });
+                $status = 'open';
+            } catch (QueryException) {
+                $row = DB::table('store_reputations')->where('host', $host)->first();
+                $status = $row !== null ? (string) $row->status : 'open';
+                if ($row !== null) {
+                    DB::table('store_reputations')->where('host', $host)->update([
+                        'rating' => $rating ?? $row->rating,
+                        'review_count' => $reviews ?? $row->review_count,
+                        'updated_at' => now(),
+                    ]);
+                    $rating = $rating ?? ($row->rating !== null ? (float) $row->rating : null);
+                    $reviews = $reviews ?? ($row->review_count !== null ? (int) $row->review_count : null);
+                }
+            }
         } else {
             $status = 'open';
         }

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState, type ComponentType } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,8 +13,11 @@ type CameraPiece = ComponentType<{ style?: object; facing?: 'front' | 'back' }>;
 
 export function TryOnScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ title?: string | string[]; category?: string | string[] }>();
+  const productTitle = firstParam(params.title);
+  const requested = firstParam(params.category);
   const insets = useSafeAreaInsets();
-  const [category, setCategory] = useState('shoes');
+  const [category, setCategory] = useState(requested === 'glasses' || requested === 'hats' || requested === 'shoes' ? requested : 'shoes');
   const [cameraOn, setCameraOn] = useState(false);
   const [cameraView, setCameraView] = useState<{ View: CameraPiece } | null>(null);
   const scope = useQuery({ queryKey: ['try-on', category], queryFn: () => fetchTryOn(category) });
@@ -43,6 +46,7 @@ export function TryOnScreen() {
         <Text style={{ color: palette.ivory, fontWeight: '600' }}>{t('profile.back')}</Text>
       </Pressable>
       <Text style={{ color: palette.ivory, fontSize: 28, fontWeight: '700' }}>{t('guide.tryOnTitle')}</Text>
+      {productTitle !== '' ? <Text style={{ color: palette.goldSoft }}>{t('guide.tryOnProduct', { title: productTitle })}</Text> : null}
       <View style={{ flexDirection: 'row', gap: 8 }}>
         {(['shoes', 'glasses', 'hats'] as const).map((choice) => (
           <Pressable accessibilityRole="button" key={choice} onPress={() => { setCategory(choice); setCameraOn(false); }} style={pill}>
@@ -77,6 +81,11 @@ export function TryOnScreen() {
       {showCamera ? null : <Text style={{ color: palette.goldSoft }}>{t('guide.cameraOff')}</Text>}
     </View>
   );
+}
+
+function firstParam(value: string | string[] | undefined): string {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return typeof raw === 'string' ? raw : '';
 }
 
 const pill = { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.12)' };

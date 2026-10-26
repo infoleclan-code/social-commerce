@@ -24,8 +24,13 @@ final class PriceForecast
         $nearLow = $chart['hint'] === 'good_now';
         $above = $chart['avg_90_minor'] !== null && $current !== null && $current > (int) round($chart['avg_90_minor'] * 1.03);
         $wait = $soon && $above && ! $nearLow;
-        $percent = $wait ? (int) $event['drop_percent'] : 0;
-        $drop = $wait && $current !== null ? (int) round($current * $percent / 100) : 0;
+        $low = $chart['low_30_minor'];
+        $drop = 0;
+        $percent = 0;
+        if ($wait && $current !== null && is_int($low) && $low < $current) {
+            $drop = $current - $low;
+            $percent = (int) round($drop / $current * 100);
+        }
 
         return [
             'estimate' => true,

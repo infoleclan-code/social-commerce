@@ -39,9 +39,19 @@ final class SerpApiShoppingTest extends TestCase
         $this->assertSame('out_of_stock', $byStore['JD Sports']['availability']);
         $this->assertArrayNotHasKey('Google', $byStore);
         $this->assertSame(
-            ['JD Sports', 'Zappos', 'Finish Line', 'Nike', 'Foot Locker', "Dick's"],
+            ['Finish Line', 'Nike', "Dick's", 'JD Sports', 'Zappos', 'Foot Locker'],
             array_column($offers, 'store'),
         );
+        $this->assertSame('USD', $byStore['Finish Line']['currency']);
+    }
+
+    public function test_a_japan_storefront_keeps_yen_without_adding_cents(): void
+    {
+        $this->fakeSerp('shopping-jpy.json', 'immersive-jpy.json');
+        $offers = (new SerpApiShoppingProvider('test-key'))->search('headphones', ['gl' => 'jp', 'hl' => 'ja']);
+        $this->assertSame('JPY', $offers[0]['currency']);
+        $this->assertSame(15100, $offers[0]['price_minor']);
+        $this->assertSame(0, $offers[0]['shipping_minor']);
     }
 
     public function test_an_empty_mapping_of_a_successful_response_is_not_cached(): void

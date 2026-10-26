@@ -14,7 +14,7 @@ use Illuminate\Support\Str;
 use Throwable;
 
 /**
- * Demo buyer, admin, and the account that owns the sample reels. Skipped in production.
+ * Demo buyer, admin, and the account that owns the sample reels. Runs only when APP_ENV=local.
  * The admin password and TOTP secret are generated when the admin is created, or when the
  * stored secret is still the one that used to be committed. They are printed once and are
  * not written back into the repository.
@@ -26,7 +26,7 @@ class DemoAccountsSeeder extends Seeder
 
     public function run(): void
     {
-        if (app()->environment('production')) {
+        if (! app()->environment('local')) {
             return;
         }
 

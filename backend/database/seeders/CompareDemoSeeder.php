@@ -16,7 +16,7 @@ class CompareDemoSeeder extends Seeder
 {
     public function run(): void
     {
-        if (app()->environment('production') || ! Schema::hasTable('price_observations')) {
+        if (! app()->environment('local') || ! Schema::hasTable('price_observations')) {
             return;
         }
 

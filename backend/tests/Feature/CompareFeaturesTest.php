@@ -93,7 +93,7 @@ final class CompareFeaturesTest extends TestCase
         $this->assertFalse($byStore['Plain Mart']['shipping_known']);
         $this->assertFalse($byStore['Plain Mart']['tax_known']);
         $this->assertFalse($byStore['Plain Mart']['total_known']);
-        $this->assertSame(['Plain Mart', 'Included Mart', 'Added Mart'], array_column($offers, 'store'));
+        $this->assertSame(['Included Mart', 'Added Mart', 'Plain Mart'], array_column($offers, 'store'));
     }
 
     public function test_trust_coupons_shipping_region_and_a_blocked_store(): void
@@ -107,7 +107,7 @@ final class CompareFeaturesTest extends TestCase
         $this->assertSame(2400, $byStore['Finish Line']['review_count']);
         $this->assertTrue($byStore['Finish Line']['ships_to_user']);
         $this->assertSame('mixed', $byStore['Foot Locker']['trust']);
-        $this->assertFalse($byStore["Dick's"]['ships_to_user']);
+        $this->assertArrayNotHasKey("Dick's", $byStore);
         $finish = $byStore['Finish Line']['id'];
 
         $this->app['auth']->forgetGuards();
@@ -178,7 +178,8 @@ final class CompareFeaturesTest extends TestCase
         $this->getJson('/api/v1/compare?q=nike&country=DE')->assertOk()->assertJsonPath('data.country', 'DE');
         $this->assertSame('de', Cache::get('seen-context')['gl']);
         $this->assertSame('de', Cache::get('seen-context')['hl']);
-        $this->getJson('/api/v1/compare?q=nike&currency=JPY')->assertStatus(422);
+        $this->getJson('/api/v1/compare?q=nike&currency=JPY')->assertOk()->assertJsonPath('data.minor_unit', 0);
+        $this->getJson('/api/v1/compare?q=nike&currency=XXX')->assertStatus(422);
     }
 
     public function test_a_refreshed_fx_rate_is_used_and_a_missing_currency_is_still_dropped(): void
@@ -214,7 +215,7 @@ final class CompareFeaturesTest extends TestCase
                     [
                         'store' => 'Yen Mart', 'title' => 'Nike Dunk Low', 'url' => 'https://yen.example/dunk',
                         'brand' => 'Nike', 'model' => 'Dunk Low', 'size' => '10', 'price_minor' => 9_000,
-                        'shipping_minor' => 0, 'shipping_known' => true, 'currency' => 'JPY', 'availability' => 'in_stock',
+                        'shipping_minor' => 0, 'shipping_known' => true, 'currency' => 'XXX', 'availability' => 'in_stock',
                     ],
                 ];
             }
@@ -236,6 +237,7 @@ final class CompareFeaturesTest extends TestCase
         ], ['Accept' => 'application/json'])
             ->assertOk()
             ->assertJsonPath('data.detected_query', 'nike sneakers')
+            ->assertJsonPath('data.photo_match', 'demo')
             ->assertJsonPath('data.products.0.offers.0.store', 'Finish Line');
 
         $this->post('/api/v1/compare/visual', [
@@ -271,7 +273,7 @@ final class CompareFeaturesTest extends TestCase
 
         $this->artisan('prices:check-alerts')->assertSuccessful();
         Mail::assertSent(PriceDropAlert::class, fn (PriceDropAlert $mail): bool => $mail->reason === 'target' && $mail->totalMinor === 10500);
-        Http::assertSent(fn ($request): bool => str_contains($request->url(), 'exp.host') && $request['title'] === 'Target price');
+        Http::assertSent(fn ($request): bool => str_contains($request->url(), 'exp.host') && $request['title'] === 'Target price' && str_contains((string) $request['body'], '105.00'));
 
         Mail::fake();
         Http::fake();

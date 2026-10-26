@@ -12,6 +12,8 @@ use Illuminate\Support\Str;
 /** A list friends can open, vote on, and tally pledges against. No payment is processed. */
 final class SharedLists
 {
+    public function __construct(private readonly FxRates $fx) {}
+
     /** @return array<string, mixed> */
     public function create(User $user, string $title, string $currency): array
     {
@@ -184,6 +186,7 @@ final class SharedLists
             'items' => $items,
             'pledges' => $pledges,
             'pledge_total_minor' => $total,
+            'minor_unit' => $this->fx->exponent(strtoupper(trim((string) $list->currency))),
             'payment' => 'not_processed',
         ];
     }

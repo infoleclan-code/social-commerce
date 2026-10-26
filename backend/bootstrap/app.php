@@ -9,14 +9,19 @@ use App\Http\Middleware\EnsureAdmin;
 use App\Http\Middleware\EnsurePurchasesEnabled;
 use App\Http\Middleware\RejectBanned;
 use App\Support\SentryReporter;
+use Illuminate\Auth\AuthenticationException;
 use Illuminate\Contracts\Auth\Middleware\AuthenticatesRequests;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
+use Illuminate\Http\Exceptions\HttpResponseException;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Session\Middleware\StartSession;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -58,6 +63,38 @@ return Application::configure(basePath: dirname(__DIR__))
         );
         // Never report validation-level refusals as errors.
         $exceptions->dontReport([ApiException::class]);
+        $exceptions->render(function (Throwable $exception, Request $request) {
+            if (! $request->is('api/*') && ! $request->expectsJson()) {
+                return null;
+            }
+            if ($exception instanceof ApiException
+                || $exception instanceof ValidationException
+                || $exception instanceof AuthenticationException
+                || $exception instanceof HttpResponseException) {
+                return null;
+            }
+            $status = $exception instanceof HttpExceptionInterface ? $exception->getStatusCode() : 500;
+            if ($status === 401 || $status === 422) {
+                return null;
+            }
+            if ($status < 400 || $status > 599) {
+                $status = 500;
+            }
+            $code = match (true) {
+                $status === 404 => 'NOT_FOUND',
+                $status === 403 => 'FORBIDDEN',
+                $status === 429 => 'RATE_LIMITED',
+                $status >= 500 => 'SERVER_ERROR',
+                default => 'ERROR',
+            };
+            $message = match (true) {
+                $status === 404 => 'Not found.',
+                $status >= 500 => 'Something went wrong.',
+                default => 'Request failed.',
+            };
+
+            return new JsonResponse(['message' => $message, 'code' => $code], $status);
+        });
         $exceptions->reportable(function (Throwable $exception): void {
             app(SentryReporter::class)->capture($exception);
         });

@@ -126,8 +126,16 @@ final class CompareController extends Controller
 
     private function country(Request $request, mixed $value): string
     {
-        return Region::country(is_string($value) ? $value : null)
-            ?? Region::country($request->user()?->shop_country)
+        if (is_string($value) && trim($value) !== '') {
+            $code = Region::country($value);
+            if ($code === null) {
+                throw ValidationException::withMessages(['country' => 'Choose a listed country.']);
+            }
+
+            return $code;
+        }
+
+        return Region::country($request->user()?->shop_country)
             ?? Region::detect($request);
     }
 

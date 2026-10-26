@@ -97,10 +97,10 @@ Route::prefix('v1')->group(function (): void {
         Route::delete('wishlist/{item}', [WishlistController::class, 'destroy'])->middleware('throttle:compare');
 
         Route::post('visual-search', [Phase1Controller::class, 'visualSearch'])->middleware('throttle:scan');
-        Route::post('try-on', [HabitScaleController::class, 'renderTryOn'])->middleware('throttle:scan');
-        Route::post('try-on/{render}/poll', [HabitScaleController::class, 'openPoll'])->middleware('throttle:squad');
-        Route::get('try-on/polls/{token}', [HabitScaleController::class, 'showPoll'])->middleware('throttle:feed-read');
-        Route::post('try-on/polls/{token}/vote', [HabitScaleController::class, 'vote'])->middleware('throttle:squad');
+        Route::post('try-on', [HabitScaleController::class, 'renderTryOn'])->middleware(['purchases', 'throttle:scan']);
+        Route::post('try-on/{render}/poll', [HabitScaleController::class, 'openPoll'])->middleware(['purchases', 'throttle:squad']);
+        Route::get('try-on/polls/{token}', [HabitScaleController::class, 'showPoll'])->middleware(['purchases', 'throttle:feed-read']);
+        Route::post('try-on/polls/{token}/vote', [HabitScaleController::class, 'vote'])->middleware(['purchases', 'throttle:squad']);
         Route::post('feed/{post}/auto-tag', [DifferentiatorController::class, 'autoTag'])->middleware('throttle:scan');
         Route::post('feed/{post}/tap', [GrowthEngineController::class, 'tap'])->middleware('throttle:feed-like');
         Route::get('taste', [GrowthEngineController::class, 'taste']);

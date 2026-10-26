@@ -62,6 +62,7 @@ export type SharedList = {
   items: SharedItem[];
   pledges: { username: string; amount_minor: number; currency: string; note: string | null; mine: boolean }[];
   pledge_total_minor: number;
+  minor_unit?: number;
   payment: 'not_processed';
 };
 

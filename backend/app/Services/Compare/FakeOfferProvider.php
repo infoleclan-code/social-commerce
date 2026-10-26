@@ -55,6 +55,8 @@ final class FakeOfferProvider implements OfferProvider
             self::row('adidas', 'Adidas Samba', 'https://www.adidas.com/samba', 'Adidas', 'Samba', '9', 10_000, 0, true, 'in_stock', 4.7, 3000, ['US', 'DE', 'FR', 'GB']),
             self::row('Foot Locker', 'Adidas Samba', 'https://www.footlocker.com/samba', 'Adidas', 'Samba', '9', 9_500, 1_000, true, 'in_stock', 3.4, 90, ['US', 'GB', 'DE', 'FR', 'AU']),
             self::row('JD Sports', 'Adidas Samba', 'https://www.jdsports.com/samba', 'Adidas', 'Samba', '9', 9_000, 0, true, 'out_of_stock', 4.1, 500, ['GB', 'DE', 'FR']),
+            self::row('Sony', 'Sony WH-1000XM5 headphones', 'https://www.sony.com/wh-1000xm5', 'Sony', 'WH-1000XM5', null, 35_000, 0, true, 'in_stock', 4.6, 800, ['US', 'JP', 'DE', 'GB']),
+            self::row('Bose', 'Bose QuietComfort headphones', 'https://www.bose.com/quietcomfort', 'Bose', 'QuietComfort', null, 28_000, 0, true, 'in_stock', 4.5, 600, ['US', 'JP', 'DE', 'GB']),
         ];
     }
 

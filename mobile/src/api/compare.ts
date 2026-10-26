@@ -1,6 +1,6 @@
 import { api, query } from '@/api/client';
 
-export type CompareCoupon = { code: string; label: string };
+export type CompareCoupon = { code: string; label: string; included_in_total?: boolean };
 
 export type CompareOffer = {
   id: string;
@@ -41,6 +41,8 @@ export type CompareResult = {
   checked_at: string;
   products: CompareProduct[];
   detected_query?: string;
+  photo_match?: 'demo' | 'lens';
+  photo_note?: string;
 };
 
 export type PricePoint = { date: string; low_minor: number };

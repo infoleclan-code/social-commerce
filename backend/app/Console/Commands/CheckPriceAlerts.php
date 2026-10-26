@@ -7,6 +7,7 @@ namespace App\Console\Commands;
 use App\Mail\PriceDropAlert;
 use App\Models\User;
 use App\Services\Compare\CompareService;
+use App\Services\Compare\FxRates;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -20,7 +21,7 @@ final class CheckPriceAlerts extends Command
 
     protected $description = 'Notify people when a saved product\'s best price drops';
 
-    public function handle(CompareService $compare): int
+    public function handle(CompareService $compare, FxRates $fx): int
     {
         $sent = 0;
         foreach (DB::table('wishlists')->where('notify', true)->orderBy('id')->get() as $row) {
@@ -44,34 +45,49 @@ final class CheckPriceAlerts extends Command
             }
             $previous = $row->best_total_minor !== null ? (int) $row->best_total_minor : null;
             $target = $row->target_minor !== null ? (int) $row->target_minor : null;
-            DB::table('wishlists')->where('id', $row->id)->update([
-                'best_total_minor' => $best,
-                'updated_at' => now(),
-            ]);
             $dropped = $previous !== null && $best < $previous;
             $hitTarget = $target !== null && $best <= $target && ($previous === null || $previous > $target);
+            $remember = function () use ($row, $best): void {
+                DB::table('wishlists')->where('id', $row->id)->update([
+                    'best_total_minor' => $best,
+                    'updated_at' => now(),
+                ]);
+            };
             if (! $dropped && ! $hitTarget) {
+                $remember();
+
                 continue;
             }
             $user = User::query()->find($row->user_id);
             if ($user === null || $user->anonymized_at !== null) {
+                $remember();
+
                 continue;
             }
             $reason = $hitTarget && ! $dropped ? 'target' : 'drop';
+            $exponent = $fx->exponent((string) $row->currency);
             try {
-                Mail::to($user->email)->send(new PriceDropAlert((string) $row->query, (string) $row->currency, $best, $reason));
-                $sent++;
+                Mail::to($user->email)->send(new PriceDropAlert((string) $row->query, (string) $row->currency, $best, $reason, $exponent));
             } catch (Throwable) {
-                // The stored price is already updated; a mail outage can retry next hour.
+                continue;
             }
-            $this->push($user->id, (string) $row->query, (string) $row->currency, $best, $reason);
+            $this->push($user->id, (string) $row->query, (string) $row->currency, $best, $reason, $exponent);
+            $remember();
+            $sent++;
         }
         $this->info('Price alerts sent: '.$sent);
 
         return self::SUCCESS;
     }
 
-    private function push(string $userId, string $query, string $currency, int $total, string $reason): void
+    private function amount(int $total, int $exponent): string
+    {
+        $exponent = max(0, $exponent);
+
+        return number_format($total / (10 ** $exponent), $exponent, '.', '');
+    }
+
+    private function push(string $userId, string $query, string $currency, int $total, string $reason, int $exponent): void
     {
         $tokens = DB::table('user_devices')
             ->where('user_id', $userId)
@@ -83,7 +99,7 @@ final class CheckPriceAlerts extends Command
                 Http::timeout(4)->post('https://exp.host/--/api/v2/push/send', [
                     'to' => $token,
                     'title' => $reason === 'target' ? 'Target price' : 'Price drop',
-                    'body' => $query.' is now '.$currency.' '.number_format($total / 100, 2),
+                    'body' => $query.' is now '.$currency.' '.$this->amount($total, $exponent),
                 ]);
             } catch (Throwable) {
                 // Push is best-effort. The token is not written to the log.

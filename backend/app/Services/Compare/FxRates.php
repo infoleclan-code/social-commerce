@@ -71,7 +71,7 @@ final class FxRates
         }
         if (DB::getSchemaBuilder()->hasTable('fx_rates')) {
             foreach (DB::table('fx_rates')->get(['currency', 'per_usd']) as $row) {
-                $rates[strtoupper((string) $row->currency)] = (int) $row->per_usd;
+                $rates[strtoupper(trim((string) $row->currency))] = (int) $row->per_usd;
             }
         }
         $rates['USD'] = 1_000_000;

@@ -1,0 +1,12 @@
+{
+  "shopping_results": [
+    {
+      "position": 1,
+      "title": "WH-1000XM5",
+      "product_id": "15100",
+      "immersive_product_page_token": "eyJqdWQiOiJqcHkifQ",
+      "price": "¥15,100",
+      "extracted_price": 15100
+    }
+  ]
+}

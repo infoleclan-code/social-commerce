@@ -61,13 +61,23 @@ final class PriceHistory
             ->where('currency', $currency)
             ->first();
         if ($existing === null) {
-            DB::table('compare_searches')->insert([
-                'id' => (string) Str::uuid7(),
-                'query' => $query,
-                'country' => $country,
-                'currency' => $currency,
-                'last_searched_at' => now(),
-            ]);
+            try {
+                DB::transaction(function () use ($query, $country, $currency): void {
+                    DB::table('compare_searches')->insert([
+                        'id' => (string) Str::uuid7(),
+                        'query' => $query,
+                        'country' => $country,
+                        'currency' => $currency,
+                        'last_searched_at' => now(),
+                    ]);
+                });
+            } catch (QueryException) {
+                DB::table('compare_searches')
+                    ->whereRaw('lower(query) = lower(?)', [$query])
+                    ->where('country', $country)
+                    ->where('currency', $currency)
+                    ->update(['last_searched_at' => now()]);
+            }
 
             return;
         }

@@ -45,7 +45,7 @@ final class Region
     public static function country(?string $value): ?string
     {
         $code = strtoupper(trim((string) $value));
-        if (preg_match('/^[A-Z]{2}$/', $code) !== 1 || in_array($code, ['XX', 'T1'], true)) {
+        if (! isset(self::COUNTRIES[$code])) {
             return null;
         }
 

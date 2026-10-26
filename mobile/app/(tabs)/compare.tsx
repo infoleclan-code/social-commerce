@@ -17,6 +17,7 @@ import {
   searchByPhoto,
   searchCompare,
   type CompareOffer,
+  type CompareProduct,
 } from '@/api/compare';
 import { fetchAlternatives, fetchForecast, searchLink } from '@/api/discover';
 import { registerPushDevice } from '@/features/auth/register-push';
@@ -167,7 +168,7 @@ export default function CompareScreen() {
       form.append('currency', currency);
       const found = await searchByPhoto(form);
       const detected = found.data.detected_query ?? found.data.query;
-      setNote(t('compare.photoMatched', { query: detected }));
+      setNote(found.data.photo_match === 'demo' ? t('compare.photoDemo') : t('compare.photoMatched', { query: detected }));
       setText(detected);
       setSubmitted(detected);
     } catch (error) {
@@ -222,7 +223,7 @@ export default function CompareScreen() {
         <Pressable accessibilityRole="button" onPress={() => router.push('/lists')} style={pill}>
           <Text style={pillText}>{t('guide.lists')}</Text>
         </Pressable>
-        <Pressable accessibilityRole="button" onPress={() => router.push('/try-on')} style={pill}>
+        <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/try-on', params: { title: products[0]?.title ?? '', category: products[0] ? tryOnCategory(products[0]) : 'shoes' } })} style={pill}>
           <Text style={pillText}>{t('guide.tryOn')}</Text>
         </Pressable>
         <Pressable accessibilityRole="button" onPress={() => router.push('/savings')} style={pill}>
@@ -236,6 +237,9 @@ export default function CompareScreen() {
         return (
           <View key={`${product.brand}-${product.model}-${product.size ?? ''}`} style={{ gap: 8 }}>
             <Text style={{ color: palette.ivory, fontSize: 18, fontWeight: '700' }}>{product.title}</Text>
+            <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/try-on', params: { title: product.title, category: tryOnCategory(product) } })} style={pill}>
+              <Text style={pillText}>{t('guide.tryOn')}</Text>
+            </Pressable>
             <Text style={{ color: palette.muted }}>{[product.brand, product.size ? t('compare.sizeValue', { size: product.size }) : null].filter(Boolean).join(' · ')}</Text>
             {history ? <PriceChart hint={history.hint} points={history.points} /> : null}
             {history?.low_30_minor !== null && history?.low_30_minor !== undefined ? (
@@ -260,7 +264,7 @@ export default function CompareScreen() {
                 ) : null}
                 <Text style={{ color: palette.muted }}>{shipsLine(offer.ships_to_user)}</Text>
                 {offer.coupons.map((coupon) => (
-                  <Text key={coupon.code} style={{ color: palette.goldSoft }}>{t('compare.coupon', { code: coupon.code, label: coupon.label })}</Text>
+                  <Text key={coupon.code} style={{ color: palette.goldSoft }}>{t(coupon.included_in_total ? 'compare.couponIncluded' : 'compare.couponAside', { code: coupon.code, label: coupon.label })}</Text>
                 ))}
                 <Text style={{ color: palette.muted }}>{t('compare.checked', { time: checkedAt(offer.checked_at) })}</Text>
                 <Pressable accessibilityRole="link" onPress={() => void visit(offer)}>
@@ -407,6 +411,13 @@ function problem(error: unknown): string {
     if (error.code === 'RATE_LIMITED') return t('compare.slow');
   }
   return t('compare.failed');
+}
+
+function tryOnCategory(product: CompareProduct): 'shoes' | 'glasses' | 'hats' {
+  const text = `${product.title} ${product.model} ${product.brand}`.toLowerCase();
+  if (text.includes('glass')) return 'glasses';
+  if (text.includes('shoe') || text.includes('sneaker') || text.includes('dunk') || text.includes('samba')) return 'shoes';
+  return 'hats';
 }
 
 function sortLabel(sort: string): string {

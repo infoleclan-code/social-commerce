@@ -95,8 +95,8 @@ final class CompareGuideTest extends TestCase
             $this->assertSame('wait', $forecast['action']);
             $this->assertSame('low', $forecast['confidence']);
             $this->assertSame('Singles Day', $forecast['next_event']['name']);
-            $this->assertSame(10, $forecast['expected_drop_percent']);
-            $this->assertSame(2200, $forecast['expected_drop_minor']);
+            $this->assertSame(18, $forecast['expected_drop_percent']);
+            $this->assertSame(4000, $forecast['expected_drop_minor']);
             $this->assertStringContainsString('estimate', $forecast['disclaimer']);
         } finally {
             Carbon::setTestNow();

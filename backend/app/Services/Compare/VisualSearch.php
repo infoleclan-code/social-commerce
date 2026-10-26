@@ -30,16 +30,19 @@ final class VisualSearch
             throw ApiException::compareUnavailable();
         }
         $country = Region::country($filters['country'] ?? null) ?? 'US';
+        $demo = (string) config('compare.provider') !== 'serpapi';
         try {
-            $query = (string) config('compare.provider') === 'serpapi'
-                ? $this->lens($bytes, $mime, $country)
-                : 'nike sneakers';
+            $query = $demo ? 'nike sneakers' : $this->lens($bytes, $mime, $country);
         } catch (Throwable $exception) {
             report(new RuntimeException('Visual search failed: '.$exception::class));
             throw ApiException::compareUnavailable();
         }
         $result = $this->compare->search($query, $filters);
         $result['detected_query'] = $query;
+        $result['photo_match'] = $demo ? 'demo' : 'lens';
+        if ($demo) {
+            $result['photo_note'] = 'Demo mode does not read the picture. It runs the Nike sneakers search so the flow can be tried.';
+        }
 
         return $result;
     }

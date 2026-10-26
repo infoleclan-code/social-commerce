@@ -21,6 +21,9 @@ final class SerpApiShoppingProvider implements OfferProvider
 {
     private const MAX_CANDIDATES = 4;
 
+    /** Currency of the requested storefront, used when a row omits its own. */
+    private string $currencyHint = 'USD';
+
     public function __construct(private readonly string $apiKey) {}
 
     public function search(string $query, array $context = []): array
@@ -28,6 +31,7 @@ final class SerpApiShoppingProvider implements OfferProvider
         if ($this->apiKey === '') {
             throw new RuntimeException('SerpAPI key is not configured');
         }
+        $this->currencyHint = $this->currencyForGl((string) ($context['gl'] ?? 'us'));
 
         $shopping = $this->get([
             'engine' => 'google_shopping',
@@ -69,10 +73,12 @@ final class SerpApiShoppingProvider implements OfferProvider
         }
 
         usort($offers, function (array $left, array $right): int {
-            $leftRank = $left['shipping_known'] ? $left['price_minor'] + (int) $left['shipping_minor'] : $left['price_minor'];
-            $rightRank = $right['shipping_known'] ? $right['price_minor'] + (int) $right['shipping_minor'] : $right['price_minor'];
+            $group = $this->knownGroup($left) <=> $this->knownGroup($right);
+            if ($group !== 0) {
+                return $group;
+            }
 
-            return $leftRank <=> $rightRank;
+            return $this->partial($left) <=> $this->partial($right);
         });
 
         return $offers;
@@ -201,8 +207,9 @@ final class SerpApiShoppingProvider implements OfferProvider
             return null;
         }
         $title = trim((string) ($store['title'] ?? $model));
-        $shipping = $this->shipping($store);
-        $tax = $this->tax($store);
+        $currency = $this->currencyOf($store);
+        $shipping = $this->shipping($store, $currency);
+        $tax = $this->tax($store, $currency);
         $details = strtolower(implode(' ', array_map(
             fn (mixed $line): string => is_string($line) ? $line : '',
             is_array($store['details_and_offers'] ?? null) ? $store['details_and_offers'] : [],
@@ -215,13 +222,13 @@ final class SerpApiShoppingProvider implements OfferProvider
             'brand' => mb_substr($brand !== '' ? $brand : $name, 0, 80),
             'model' => mb_substr($model !== '' ? $model : $title, 0, 120),
             'size' => $size,
-            'price_minor' => (int) round(((float) $price) * 100),
+            'price_minor' => $this->minor((float) $price, $currency),
             'shipping_minor' => $shipping['minor'],
             'shipping_known' => $shipping['known'],
             'tax_minor' => $tax['minor'],
             'tax_known' => $tax['known'],
             'tax_included' => $tax['included'],
-            'currency' => 'USD',
+            'currency' => $currency,
             'availability' => str_contains($details, 'out of stock') ? 'out_of_stock' : 'in_stock',
             'rating' => is_numeric($store['rating'] ?? null) ? (float) $store['rating'] : null,
             'review_count' => is_numeric($store['reviews'] ?? null) ? (int) $store['reviews'] : null,
@@ -257,7 +264,7 @@ final class SerpApiShoppingProvider implements OfferProvider
     /** @param  array<string, mixed>  $store
      * @return array{known: bool, minor: int|null}
      */
-    private function shipping(array $store): array
+    private function shipping(array $store, string $currency): array
     {
         $text = trim((string) ($store['shipping'] ?? ''));
         if ($text === '' && is_array($store['details_and_offers'] ?? null)) {
@@ -272,10 +279,10 @@ final class SerpApiShoppingProvider implements OfferProvider
             return ['known' => false, 'minor' => null];
         }
         if (is_numeric($store['shipping_extracted'] ?? null)) {
-            return ['known' => true, 'minor' => (int) round(((float) $store['shipping_extracted']) * 100)];
+            return ['known' => true, 'minor' => $this->minor((float) $store['shipping_extracted'], $currency)];
         }
-        if (preg_match('/(?:\$|USD\s*|€|£)\s*(\d+(?:\.\d{1,2})?)/i', $text, $match) === 1) {
-            return ['known' => true, 'minor' => (int) round(((float) $match[1]) * 100)];
+        if (preg_match('/(?:\$|USD\s*|€|£|¥|￥|₩|₹)\s*(\d+(?:\.\d{1,2})?)/iu', $text, $match) === 1) {
+            return ['known' => true, 'minor' => $this->minor((float) $match[1], $currency)];
         }
         if (preg_match('/^free(?:\s+(?:delivery|shipping))?$/i', $text) === 1) {
             return ['known' => true, 'minor' => 0];
@@ -288,7 +295,7 @@ final class SerpApiShoppingProvider implements OfferProvider
      * @param  array<string, mixed>  $store
      * @return array{known: bool, included: bool, minor: int|null}
      */
-    private function tax(array $store): array
+    private function tax(array $store, string $currency): array
     {
         $text = strtolower(trim((string) ($store['tax'] ?? '')));
         if ($text === '' && is_array($store['details_and_offers'] ?? null)) {
@@ -305,10 +312,81 @@ final class SerpApiShoppingProvider implements OfferProvider
         if (preg_match('/incl(?:uded|\.)?|includes|incl\b/i', $text) === 1) {
             return ['known' => true, 'included' => true, 'minor' => 0];
         }
-        if (preg_match('/(?:\$|USD\s*|€|£)\s*(\d+(?:\.\d{1,2})?)/i', $text, $match) === 1) {
-            return ['known' => true, 'included' => false, 'minor' => (int) round(((float) $match[1]) * 100)];
+        if (preg_match('/(?:\$|USD\s*|€|£|¥|￥|₩|₹)\s*(\d+(?:\.\d{1,2})?)/iu', $text, $match) === 1) {
+            return ['known' => true, 'included' => false, 'minor' => $this->minor((float) $match[1], $currency)];
         }
 
         return ['known' => false, 'included' => false, 'minor' => null];
+    }
+
+    /** A published shipping and tax total sorts ahead of a total that treats a missing part as zero. */
+    private function knownGroup(array $offer): int
+    {
+        return ($offer['shipping_known'] ? 0 : 2) + ($offer['tax_known'] ? 0 : 1);
+    }
+
+    /** @param  array<string, mixed>  $offer */
+    private function partial(array $offer): int
+    {
+        $total = (int) $offer['price_minor'];
+        if ($offer['shipping_known']) {
+            $total += (int) $offer['shipping_minor'];
+        }
+        if ($offer['tax_known'] && ! $offer['tax_included']) {
+            $total += (int) $offer['tax_minor'];
+        }
+
+        return $total;
+    }
+
+    private function currencyForGl(string $gl): string
+    {
+        $gl = strtolower($gl);
+        foreach (Region::COUNTRIES as $country) {
+            if ($country['gl'] === $gl) {
+                return $country['currency'];
+            }
+        }
+
+        return 'USD';
+    }
+
+    /** @param  array<string, mixed>  $store */
+    private function currencyOf(array $store): string
+    {
+        $explicit = strtoupper(trim((string) ($store['currency'] ?? '')));
+        if (preg_match('/^[A-Z]{3}$/', $explicit) === 1) {
+            return $explicit;
+        }
+        $price = (string) ($store['price'] ?? '');
+        if (str_contains($price, '€')) {
+            return 'EUR';
+        }
+        if (str_contains($price, '£')) {
+            return 'GBP';
+        }
+        if (str_contains($price, '₩')) {
+            return 'KRW';
+        }
+        if (str_contains($price, '₹')) {
+            return 'INR';
+        }
+        if (str_contains($price, '¥') || str_contains($price, '￥')) {
+            return $this->currencyHint === 'CNY' ? 'CNY' : 'JPY';
+        }
+        if (str_contains($price, '$')) {
+            return in_array($this->currencyHint, ['USD', 'CAD', 'AUD', 'NZD', 'SGD', 'MXN'], true)
+                ? $this->currencyHint
+                : 'USD';
+        }
+
+        return $this->currencyHint;
+    }
+
+    private function minor(float $major, string $currency): int
+    {
+        $exponent = app(FxRates::class)->exponent($currency);
+
+        return (int) round($major * (10 ** $exponent));
     }
 }

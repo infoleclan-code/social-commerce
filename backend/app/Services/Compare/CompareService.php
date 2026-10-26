@@ -169,26 +169,27 @@ final class CompareService
         });
 
         $products = array_slice($products, 0, 4);
-        foreach ($products as &$product) {
+        foreach ($products as $index => $product) {
             $highest = 0;
-            foreach ($product['offers'] as $offer) {
-                $highest = max($highest, (int) $offer['total_minor']);
+            foreach ($product['offers'] as $priced) {
+                $highest = max($highest, (int) $priced['total_minor']);
             }
-            foreach ($product['offers'] as &$offer) {
+            foreach ($product['offers'] as $offerIndex => $offer) {
                 // The id is the snapshot the shopper is looking at. A later search
                 // that hides the dearer stores must not reuse it.
                 $offer['id'] = substr(hash('sha256', $offer['id'].'|'.$offer['currency'].'|'.$highest), 0, 24);
                 $offer['highest_minor'] = $highest;
                 $this->publish($offer);
                 unset($offer['rank'], $offer['url']);
+                $products[$index]['offers'][$offerIndex] = $offer;
             }
             if (isset($product['unavailable'])) {
-                foreach ($product['unavailable'] as &$offer) {
+                foreach ($product['unavailable'] as $offerIndex => $offer) {
                     unset($offer['rank'], $offer['url'], $offer['id']);
+                    $products[$index]['unavailable'][$offerIndex] = $offer;
                 }
             }
         }
-        unset($product, $offer);
 
         return [
             'query' => $query,
@@ -235,6 +236,7 @@ final class CompareService
                 return null;
             }
         }
+        $coupons = $this->pricedCoupons($this->coupons->forHost($host, $country), $price);
         $total = $price + ($shippingKnown && $shipping !== null ? $shipping : 0);
         if ($taxKnown && $tax !== null && ! $taxIncluded) {
             $total += $tax;
@@ -277,9 +279,44 @@ final class CompareService
             'review_count' => $trust['review_count'],
             'trust' => $trust['trust'],
             'ships_to_user' => $ships,
-            'coupons' => $this->coupons->forHost($host, $country),
+            'coupons' => $coupons,
             'rank' => $total,
         ];
+    }
+
+    /**
+     * A percent in the coupon label reduces the item price. Anything else is shown and is not part of the total.
+     *
+     * @param  list<array{code: string, label: string}>  $coupons
+     * @return list<array{code: string, label: string, included_in_total: bool}>
+     */
+    private function pricedCoupons(array $coupons, int &$price): array
+    {
+        $best = 0;
+        $winner = null;
+        foreach ($coupons as $index => $coupon) {
+            if (preg_match('/(\d{1,2})\s*%/', $coupon['label'], $match) !== 1) {
+                continue;
+            }
+            $percent = (int) $match[1];
+            if ($percent < 1 || $percent > 90) {
+                continue;
+            }
+            $discount = (int) round($price * $percent / 100);
+            if ($discount > $best) {
+                $best = $discount;
+                $winner = $index;
+            }
+        }
+        if ($best > 0) {
+            $price = max(0, $price - $best);
+        }
+        $priced = [];
+        foreach ($coupons as $index => $coupon) {
+            $priced[] = $coupon + ['included_in_total' => $winner === $index];
+        }
+
+        return $priced;
     }
 
     private function shipsTo(mixed $ships, string $country): ?bool
@@ -296,6 +333,9 @@ final class CompareService
     private function passes(array $offer, array $filters): bool
     {
         if ($filters['in_stock'] === true && $offer['availability'] !== 'in_stock') {
+            return false;
+        }
+        if (($offer['ships_to_user'] ?? null) === false) {
             return false;
         }
         $brand = strtolower(trim((string) ($filters['brand'] ?? '')));
@@ -324,6 +364,12 @@ final class CompareService
     private function sortOffers(array $offers, string $sort): array
     {
         usort($offers, function (array $left, array $right) use ($sort): int {
+            if ($sort !== 'price_asc') {
+                $group = $this->rankGroup($left) <=> $this->rankGroup($right);
+                if ($group !== 0) {
+                    return $sort === 'total_desc' ? -$group : $group;
+                }
+            }
             $compared = match ($sort) {
                 'total_desc' => $right['rank'] <=> $left['rank'],
                 'price_asc' => $left['price_minor'] <=> $right['price_minor'],
@@ -334,6 +380,12 @@ final class CompareService
         });
 
         return $offers;
+    }
+
+    /** Known shipping and tax sort ahead of a total that treats a missing part as zero. */
+    private function rankGroup(array $offer): int
+    {
+        return ($offer['shipping_known'] ? 0 : 2) + ($offer['tax_known'] ? 0 : 1);
     }
 
     /**

@@ -20,7 +20,11 @@ final class Alternatives
         $original = $this->compare->search($query, $filters);
         $best = $original['products'][0]['offers'][0]['total_minor'] ?? null;
         $brand = strtolower((string) ($original['products'][0]['brand'] ?? ''));
-        $alternativeQuery = str_contains($brand, 'nike') ? 'adidas samba' : (str_contains($brand, 'adidas') ? 'nike sneakers' : null);
+        $alternativeQuery = match (true) {
+            str_contains($brand, 'nike') => 'adidas samba',
+            str_contains($brand, 'adidas') => 'nike sneakers',
+            default => $this->categoryQuery($query, $original),
+        };
         $options = [];
         if (is_int($best) && $alternativeQuery !== null) {
             $next = $filters;
@@ -53,5 +57,19 @@ final class Alternatives
             'currency' => $filters['currency'],
             'alternatives' => $options,
         ];
+    }
+
+    /** @param  array<string, mixed>  $original */
+    private function categoryQuery(string $query, array $original): ?string
+    {
+        $title = strtolower((string) ($original['products'][0]['title'] ?? ''));
+        $text = strtolower($query).' '.$title;
+        foreach (['headphones', 'sneakers', 'shoes', 'jacket', 'watch', 'glasses'] as $category) {
+            if (str_contains($text, $category)) {
+                return $category;
+            }
+        }
+
+        return null;
     }
 }

@@ -55,17 +55,35 @@ final class LinkSearch
 
     private function page(string $url): ?string
     {
-        $url = trim($url);
-        if (strlen($url) > 500 || preg_match('#^https://#i', $url) !== 1) {
+        $parts = $this->parts($url);
+        if ($parts === null) {
             return null;
         }
-        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
-        $host = preg_replace('/^www\./', '', $host) ?? $host;
-        if (! $this->social($host) || $this->blockedHost($host)) {
+        $host = preg_replace('/^www\./', '', $parts['host']) ?? $parts['host'];
+        if (! $this->social($host) || $this->blockedHost($parts['host'])) {
             return null;
         }
 
         return $url;
+    }
+
+    /** @return array{host: string}|null */
+    private function parts(string $url): ?array
+    {
+        $url = trim($url);
+        if (strlen($url) > 2000 || preg_match('#^https://#i', $url) !== 1) {
+            return null;
+        }
+        $parsed = parse_url($url);
+        if (! is_array($parsed) || isset($parsed['user']) || isset($parsed['pass'])) {
+            return null;
+        }
+        $host = strtolower((string) ($parsed['host'] ?? ''));
+        if ($host === '' || str_contains($host, '@')) {
+            return null;
+        }
+
+        return ['host' => $host];
     }
 
     private function social(string $host): bool
@@ -117,24 +135,79 @@ final class LinkSearch
 
     private function publicImage(string $url): bool
     {
-        if (preg_match('#^https://#i', $url) !== 1) {
-            return false;
-        }
-        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+        $parts = $this->parts($url);
 
-        return $host !== '' && ! $this->blockedHost($host);
+        return $parts !== null && ! $this->blockedHost($parts['host']);
     }
 
     private function blockedHost(string $host): bool
     {
-        if ($host === 'localhost' || str_ends_with($host, '.local') || str_ends_with($host, '.internal')) {
+        $host = strtolower(trim($host, '[]'));
+        if ($host === '' || $host === 'localhost' || str_ends_with($host, '.localhost') || str_ends_with($host, '.local') || str_ends_with($host, '.internal')) {
             return true;
         }
-        if (filter_var($host, FILTER_VALIDATE_IP) === false) {
-            return false;
+        $literal = $this->literalIp($host);
+        if ($literal !== null) {
+            return $this->privateIp($literal);
+        }
+        $addresses = $this->resolve($host);
+        if ($addresses === []) {
+            return true;
+        }
+        foreach ($addresses as $address) {
+            if ($this->privateIp($address)) {
+                return true;
+            }
         }
 
-        return filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false;
+        return false;
+    }
+
+    private function literalIp(string $host): ?string
+    {
+        if (filter_var($host, FILTER_VALIDATE_IP) !== false) {
+            return $host;
+        }
+        if (preg_match('/^\d{1,10}$/', $host) === 1) {
+            $number = (int) $host;
+            if ($number < 0 || $number > 4_294_967_295) {
+                return '0.0.0.0';
+            }
+
+            return long2ip($number);
+        }
+
+        return null;
+    }
+
+    private function privateIp(string $ip): bool
+    {
+        return filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false;
+    }
+
+    /** @return list<string> */
+    private function resolve(string $host): array
+    {
+        $found = [];
+        $records = @dns_get_record($host, DNS_A + DNS_AAAA);
+        if (is_array($records)) {
+            foreach ($records as $record) {
+                if (isset($record['ip']) && is_string($record['ip'])) {
+                    $found[] = $record['ip'];
+                }
+                if (isset($record['ipv6']) && is_string($record['ipv6'])) {
+                    $found[] = $record['ipv6'];
+                }
+            }
+        }
+        if ($found === []) {
+            $v4 = @gethostbynamel($host);
+            if (is_array($v4)) {
+                $found = $v4;
+            }
+        }
+
+        return $found;
     }
 
     private function body(string $url, bool $page): string

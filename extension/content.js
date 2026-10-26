@@ -1,4 +1,10 @@
 (function () {
+  const priceMeta = document.querySelector('meta[property="product:price:amount"]')?.content
+    || document.querySelector('[itemprop="price"]')?.getAttribute('content');
+  if (typeof priceMeta !== 'string' || priceMeta.trim() === '') {
+    return;
+  }
+
   const title = document.querySelector('meta[property="og:title"]')?.content
     || document.querySelector('h1')?.textContent
     || document.title;
@@ -7,14 +13,11 @@
     return;
   }
 
-  const priceMeta = document.querySelector('meta[property="product:price:amount"]')?.content
-    || document.querySelector('[itemprop="price"]')?.getAttribute('content');
-  const pageMinor = majorToMinor(priceMeta);
-
   chrome.runtime.sendMessage({ type: 'compare', query }, (result) => {
     if (!result || result.skipped || result.error || result.empty || !result.store) {
       return;
     }
+    const pageMinor = majorToMinor(priceMeta, result.minor_unit);
     const best = formatMoney(result.total_minor, result.currency, result.minor_unit);
     const panel = document.createElement('aside');
     panel.setAttribute('data-compare', 'offer');
@@ -31,23 +34,40 @@
     }
     detail.textContent = parts.join(' · ');
     panel.append(heading, detail);
+    if (typeof result.offer_id === 'string' && result.offer_id !== '') {
+      const open = document.createElement('button');
+      open.type = 'button';
+      open.textContent = 'Open store';
+      open.addEventListener('click', () => {
+        chrome.runtime.sendMessage({ type: 'open', offerId: result.offer_id }, (opened) => {
+          if (opened && typeof opened.url === 'string' && opened.url.startsWith('https://')) {
+            window.open(opened.url, '_blank', 'noopener');
+          }
+        });
+      });
+      panel.append(open);
+    }
     document.documentElement.append(panel);
   });
 
-  function majorToMinor(raw) {
+  function majorToMinor(raw, exponent) {
     if (typeof raw !== 'string' || !/^\d+(\.\d{1,2})?$/.test(raw.trim())) {
       return null;
     }
-    const [whole, fraction = ''] = raw.trim().split('.');
-    return Number(whole) * 100 + Number((fraction + '00').slice(0, 2));
+    const exp = Number.isInteger(exponent) && exponent >= 0 && exponent <= 3 ? exponent : 2;
+    const value = Number(raw.trim());
+    if (!Number.isFinite(value)) {
+      return null;
+    }
+    return Math.round(value * (10 ** exp));
   }
 
   function formatMoney(minor, currency, exponent) {
-    const scale = exponent === 0 ? 1 : 100;
+    const exp = Number.isInteger(exponent) && exponent >= 0 && exponent <= 3 ? exponent : 2;
     try {
-      return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(Number(minor) / scale);
+      return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(Number(minor) / (10 ** exp));
     } catch (_error) {
-      return `${currency} ${Number(minor) / scale}`;
+      return `${currency} ${Number(minor) / (10 ** exp)}`;
     }
   }
 })();
