@@ -8,6 +8,8 @@ use App\Exceptions\ApiException;
 use App\Models\User;
 use App\Services\Payments\PaymentStep;
 use App\Support\Currency;
+use Illuminate\Database\Query\Builder;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -41,7 +43,7 @@ final class SquadPriceService
                 'expires_at' => $expires,
                 'created_at' => now(),
             ]);
-            DB::table('squad_members')->insert(['squad_id' => $squadId, 'user_id' => $buyer->id, 'joined_at' => now()]);
+            self::claimSeat($squadId, (string) $buyer->id);
 
             return $this->soloOrder($product, $postId, $squadId);
         }, captureDelaySeconds: (int) now()->diffInSeconds($expires));
@@ -61,13 +63,13 @@ final class SquadPriceService
             if ($squad === null || now()->greaterThanOrEqualTo($squad->expires_at)) {
                 throw ApiException::squadClosed();
             }
-            $members = (int) DB::table('squad_members')->where('squad_id', $squadId)->count();
-            $already = DB::table('squad_members')->where('squad_id', $squadId)->where('user_id', $buyer->id)->exists();
+            $members = self::seatCount($squadId);
+            $already = self::buyerHasSeat($squadId, (string) $buyer->id);
             if ($already || $members >= (int) $squad->max_members) {
                 throw ApiException::squadClosed();
             }
             $product = $this->reserveUnit((string) $squad->product_id);
-            DB::table('squad_members')->insert(['squad_id' => $squadId, 'user_id' => $buyer->id, 'joined_at' => now()]);
+            self::claimSeat($squadId, (string) $buyer->id);
 
             return $this->soloOrder($product, $squad->post_id, $squadId);
         }, captureDelaySeconds: max(0, (int) now()->diffInSeconds($squad->expires_at, false)));
@@ -87,8 +89,7 @@ final class SquadPriceService
      */
     public function settle(string $squadId, ?User $member = null): array
     {
-        if ($member !== null && (! Str::isUuid($squadId)
-            || ! DB::table('squad_members')->where('squad_id', $squadId)->where('user_id', $member->id)->exists())) {
+        if ($member !== null && (! Str::isUuid($squadId) || ! self::callerHasPaidSeat($squadId, $member))) {
             throw ApiException::squadNotFound();
         }
 
@@ -98,7 +99,7 @@ final class SquadPriceService
                 throw ApiException::squadNotFound();
             }
             $product = DB::table('products')->where('id', $squad->product_id)->first();
-            $members = (int) DB::table('squad_members')->where('squad_id', $squadId)->count();
+            $members = self::paidMemberCount($squadId);
             $unlocked = $members >= 2;
             if ($unlocked) {
                 $price = (int) $squad->floor_price_minor;
@@ -130,6 +131,67 @@ final class SquadPriceService
                 'captured' => Currency::money($unlocked ? (int) $squad->floor_price_minor : (int) $product->price_minor, (string) $product->currency),
             ];
         });
+    }
+
+    /** Buyers with a non-cancelled squad order. An unpaid join does not count. */
+    public static function paidMemberCount(string $squadId): int
+    {
+        return (int) self::qualifyingOrders($squadId)->where('purpose', 'squad')->distinct()->count('buyer_id');
+    }
+
+    /** Paid or authorized orders for this squad, whatever the checkout purpose. Unpaid joins are absent. */
+    public static function seatCount(string $squadId): int
+    {
+        return (int) self::qualifyingOrders($squadId)->distinct()->count('buyer_id');
+    }
+
+    public static function buyerHasSeat(string $squadId, string $userId): bool
+    {
+        return self::qualifyingOrders($squadId)->where('buyer_id', $userId)->exists();
+    }
+
+    /** A seat exists only beside an order. The capacity trigger still rejects a squad that is already full. */
+    public static function claimSeat(string $squadId, string $userId): void
+    {
+        try {
+            DB::table('squad_members')->insertOrIgnore([
+                'squad_id' => $squadId,
+                'user_id' => $userId,
+                'joined_at' => now(),
+            ]);
+        } catch (QueryException $full) {
+            if (($full->errorInfo[0] ?? '') === '23514') {
+                throw ApiException::squadClosed();
+            }
+            throw $full;
+        }
+    }
+
+    /** Drops the seat once the buyer has no paid or authorized order left on the squad. */
+    public static function releaseSeat(string $squadId, string $userId): void
+    {
+        if (self::buyerHasSeat($squadId, $userId)) {
+            return;
+        }
+        DB::table('squad_members')->where('squad_id', $squadId)->where('user_id', $userId)->delete();
+    }
+
+    private static function qualifyingOrders(string $squadId): Builder
+    {
+        return DB::table('orders')
+            ->where('squad_id', $squadId)
+            ->where('status', '<>', 'cancelled')
+            ->whereIn('payment_status', ['pending', 'requires_action', 'authorized', 'captured', 'partially_refunded', 'disputed']);
+    }
+
+    private static function callerHasPaidSeat(string $squadId, User $member): bool
+    {
+        return DB::table('orders')
+            ->where('squad_id', $squadId)
+            ->where('buyer_id', $member->id)
+            ->where('purpose', 'squad')
+            ->where('status', '<>', 'cancelled')
+            ->exists();
     }
 
     private function reserveUnit(string $productId): object
@@ -165,7 +227,7 @@ final class SquadPriceService
     {
         $auth = DB::table('payment_authorizations')->where('order_id', $order->id)->orderByDesc('created_at')->first();
         $product = DB::table('products')->where('id', $order->product_id)->first();
-        $members = $order->squad_id === null ? 1 : (int) DB::table('squad_members')->where('squad_id', $order->squad_id)->count();
+        $members = $order->squad_id === null ? 1 : self::seatCount((string) $order->squad_id);
         $squad = $order->squad_id === null ? null : DB::table('squads')->where('id', $order->squad_id)->first();
 
         return [

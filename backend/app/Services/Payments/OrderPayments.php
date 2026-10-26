@@ -339,6 +339,7 @@ final class OrderPayments
             $this->ledger->recordRefund($orderId, $refunded, (string) $order->currency);
             $this->ledger->settleCommissions($orderId, $refunded, $total);
             $this->ledger->settlePriceProtection($orderId, $refunded, $total);
+            $this->ledger->settlePlatformFee($orderId, $refunded, $total);
         });
     }
 

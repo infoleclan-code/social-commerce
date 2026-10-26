@@ -97,10 +97,22 @@ final class Phase1Controller extends Controller
         $data = $request->validate([
             'product_id' => ['required', 'uuid'],
             'quantity' => ['sometimes', 'integer', 'min:1', 'max:3'],
+            'expected_total_minor' => ['sometimes', 'nullable', 'integer', 'min:0'],
         ]);
-        $result = $this->scan->oneTap($request->user(), $data['product_id'], (int) ($data['quantity'] ?? 1), $this->idempotencyKey($request));
+        $result = $this->scan->oneTap(
+            $request->user(),
+            $data['product_id'],
+            (int) ($data['quantity'] ?? 1),
+            $this->idempotencyKey($request),
+            isset($data['expected_total_minor']) ? (int) $data['expected_total_minor'] : null,
+        );
 
         return new JsonResponse(['data' => $result], $result['replayed'] ? 200 : 201);
+    }
+
+    public function orders(Request $request): JsonResponse
+    {
+        return new JsonResponse(['data' => $this->scan->listOrders($request->user())]);
     }
 
     public function showOrder(Request $request, string $order): JsonResponse
@@ -140,6 +152,27 @@ final class Phase1Controller extends Controller
     public function paymentMethod(Request $request): JsonResponse
     {
         return new JsonResponse(['data' => $this->scan->paymentMethod($request->user())]);
+    }
+
+    public function paymentMethods(Request $request): JsonResponse
+    {
+        return new JsonResponse(['data' => $this->cards->list($request->user())]);
+    }
+
+    public function destroyPaymentMethod(Request $request, string $method): JsonResponse
+    {
+        $this->cards->remove($request->user(), $method);
+
+        return new JsonResponse(null, 204);
+    }
+
+    public function saveTestCard(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'setup_intent_id' => ['required', 'string', 'regex:/^seti_[A-Za-z0-9_]{1,100}$/'],
+        ]);
+
+        return new JsonResponse(['data' => $this->cards->saveTestCard($request->user(), $data['setup_intent_id'])]);
     }
 
     /** Raw bytes of the upload; base64 is length-checked and strictly decoded (ImageGuard). */

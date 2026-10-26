@@ -19,8 +19,8 @@ final class ProfileTest extends TestCase
 
     public function test_profile_counts_reels_and_friends_and_hides_a_blocked_account(): void
     {
-        $viewer = $this->makeUser(['bio' => 'City reels']);
-        $friend = $this->makeUser();
+        $viewer = $this->makeUser(['bio' => 'City reels', 'profile_visibility' => 'public']);
+        $friend = $this->makeUser(['profile_visibility' => 'public']);
         $stranger = $this->makeUser();
         $this->befriend($viewer, $friend);
         $this->mediaPost($viewer, 'public');
@@ -32,9 +32,17 @@ final class ProfileTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.bio', 'City reels')
             ->assertJsonPath('data.counts.posts', 2)
-            ->assertJsonPath('data.counts.followers', 1)
-            ->assertJsonPath('data.counts.following', 1)
+            ->assertJsonPath('data.counts.followers', 0)
+            ->assertJsonPath('data.counts.following', 0)
             ->assertJsonPath('data.viewer.is_self', true);
+        $this->postJson('/api/v1/users/'.$friend->id.'/follow')->assertCreated();
+        $this->getJson('/api/v1/me')
+            ->assertJsonPath('data.counts.followers', 0)
+            ->assertJsonPath('data.counts.following', 1);
+        $this->getJson('/api/v1/users/'.$friend->id)
+            ->assertJsonPath('data.counts.followers', 1)
+            ->assertJsonPath('data.counts.following', 0)
+            ->assertJsonPath('data.viewer.following', true);
 
         $this->getJson('/api/v1/users/'.$friend->id)
             ->assertOk()

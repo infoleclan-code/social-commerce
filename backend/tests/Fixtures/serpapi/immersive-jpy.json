@@ -1,0 +1,18 @@
+{
+  "product_results": {
+    "title": "Sony WH-1000XM5 headphones",
+    "brand": "Sony",
+    "stores": [
+      {
+        "name": "Sony",
+        "link": "https://www.sony.jp/headphone/products/WH-1000XM5/",
+        "title": "Sony WH-1000XM5 headphones",
+        "price": "¥15,100",
+        "extracted_price": 15100,
+        "shipping": "送料無料",
+        "shipping_extracted": 0,
+        "details_and_offers": ["In stock online"]
+      }
+    ]
+  }
+}

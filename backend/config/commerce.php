@@ -11,6 +11,9 @@ declare(strict_types=1);
 */
 
 return [
+    // In-app checkout stays off unless a deploy sets COMMERCE_PURCHASES=true.
+    'purchases_enabled' => filter_var(env('COMMERCE_PURCHASES', false), FILTER_VALIDATE_BOOLEAN),
+
     // Seconds between authorization and capture during which the buyer can undo for free.
     'undo_seconds' => (int) env('COMMERCE_UNDO_SECONDS', 120),
 
@@ -19,6 +22,9 @@ return [
 
     // Creator + referral commissions together, as a share of what the buyer paid.
     'max_commission_bps' => (int) env('COMMERCE_MAX_COMMISSION_BPS', 2000),
+
+    // Platform fee on merchandise (not shipping or tax), posted on capture and reversed on refund.
+    'platform_fee_bps' => (int) env('COMMERCE_PLATFORM_FEE_BPS', 1000),
 
     // Largest single order in minor units (fraud exposure per tap).
     'max_order_minor' => (int) env('COMMERCE_MAX_ORDER_MINOR', 500_000),

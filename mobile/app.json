@@ -22,7 +22,7 @@
     },
     "web": {
       "bundler": "metro",
-      "output": "static",
+      "output": "single",
       "favicon": "./assets/images/favicon.png",
       "backgroundColor": "#000000"
     },
@@ -58,6 +58,12 @@
         "@stripe/stripe-react-native",
         {
           "enableGooglePay": true
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#000000"
         }
       ]
     ],

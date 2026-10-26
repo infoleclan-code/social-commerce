@@ -101,6 +101,7 @@ final class ForYouCandidates
             ->where('kind', 'media')
             ->where('audience', 'public')
             ->whereNull('deleted_at')
+            ->whereNull('hidden_at')
             ->when($tag !== null, fn ($query) => $query->whereRaw('tags @> ?::jsonb', [json_encode([$tag], JSON_THROW_ON_ERROR)]))
             ->orderByDesc('rank_score')
             ->orderByDesc('id')

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Console\Concerns\SkipsWhenPurchasesDisabled;
 use App\Services\Commerce\LedgerService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -11,12 +12,17 @@ use Throwable;
 
 final class ReleaseCommissions extends Command
 {
+    use SkipsWhenPurchasesDisabled;
+
     protected $signature = 'ledger:release-commissions {--limit=500 : Orders per run}';
 
     protected $description = 'Release creator commissions (and grant the kept-purchase reward) once the 14-day return window has closed';
 
     public function handle(LedgerService $ledger): int
     {
+        if ($this->purchasesAreOff()) {
+            return self::SUCCESS;
+        }
         $due = DB::select(
             "SELECT o.id
                FROM orders o

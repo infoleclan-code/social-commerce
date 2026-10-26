@@ -72,6 +72,16 @@ final class GrowthEngineController extends Controller
         return new JsonResponse(['data' => $this->sellers->refresh($request->user())]);
     }
 
+    public function ship(Request $request, string $order): JsonResponse
+    {
+        $data = $request->validate([
+            'carrier' => ['required', 'string', 'min:2', 'max:40'],
+            'tracking_number' => ['required', 'string', 'min:4', 'max:64'],
+        ]);
+
+        return new JsonResponse(['data' => $this->sellers->ship($request->user(), $order, $data['carrier'], $data['tracking_number'])]);
+    }
+
     public function syncCatalog(Request $request): JsonResponse
     {
         $data = $request->validate([

@@ -110,15 +110,13 @@ export const ReelItem = memo(function ReelItem({
   const burstY = useSharedValue(0);
   const reduceMotion = useReducedMotion();
   const [expanded, setExpanded] = useState(false);
-  const [syntheticLabel, setSyntheticLabel] = useState<string | null>(post.synthetic?.label ?? null);
-  useEffect(() => {
-    setSyntheticLabel(post.synthetic?.label ?? null);
-  }, [post.id, post.synthetic?.label]);
+  const [published, setPublished] = useState<{ postId: string; label: string } | null>(null);
+  const syntheticLabel = published?.postId === post.id ? published.label : (post.synthetic?.label ?? null);
   const [tapClassifier] = useState(() => createTapClassifier(DOUBLE_TAP_MS));
 
   function publishTrack(kind: 'dub' | 'subtitle') {
     void api<{ data: { label: string } }>(`/feed/${post.id}/synthetic`, json('POST', { language: 'en', kind })).then((body) => {
-      setSyntheticLabel(body.data.label);
+      setPublished({ postId: post.id, label: body.data.label });
     });
   }
 

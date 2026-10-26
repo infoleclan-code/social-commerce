@@ -1,0 +1,73 @@
+# Local or single-host launch. Copy backend/.env.production.example to backend/.env
+# and set APP_KEY before `docker compose up`. Purchases stay off.
+# app is nginx in front of PHP-FPM. scheduler and queue reuse the image and
+# replace the web command, so they do not listen on port 80.
+x-app-env: &app-env
+  DB_HOST: postgres
+  DB_PORT: "5432"
+  DB_DATABASE: social
+  DB_USERNAME: social
+  DB_PASSWORD: social
+  APP_DEBUG: "false"
+  LOG_LEVEL: error
+  COMMERCE_PURCHASES: "false"
+
+services:
+  app:
+    build: .
+    env_file:
+      - backend/.env
+    environment:
+      <<: *app-env
+    ports:
+      - "8000:80"
+    volumes:
+      - backups:/var/www/backend/storage/app/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1/up"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+  scheduler:
+    build: .
+    command: ["php", "artisan", "schedule:work"]
+    env_file:
+      - backend/.env
+    environment:
+      <<: *app-env
+    volumes:
+      - backups:/var/www/backend/storage/app/backups
+    depends_on:
+      app:
+        condition: service_healthy
+  queue:
+    build: .
+    command: ["php", "artisan", "queue:work", "--sleep=1", "--tries=3", "--max-time=3600"]
+    env_file:
+      - backend/.env
+    environment:
+      <<: *app-env
+    depends_on:
+      app:
+        condition: service_healthy
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: social
+      POSTGRES_USER: social
+      POSTGRES_PASSWORD: social
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U social -d social"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
+  backups:

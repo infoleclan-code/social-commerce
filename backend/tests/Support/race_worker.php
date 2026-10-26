@@ -63,11 +63,11 @@ try {
 
             return ['ok' => true];
         })(),
-        'join_squad' => (function () use ($config, $index): array {
+        'checkout_squad' => (function () use ($config, $index): array {
             $user = User::query()->findOrFail($config['buyers'][$index]);
-            $squad = app(CheckoutService::class)->joinSquad($user, $config['squad']);
+            $order = app(CheckoutService::class)->checkout($user, $config['product'], null, $config['squad'], null, 1, $config['keys'][$index]);
 
-            return ['ok' => true, 'members' => $squad['members']];
+            return ['ok' => true, 'order' => $order['id']];
         })(),
         'webhook' => (function () use ($config): array {
             return ['ok' => true, 'outcome' => app(StripeWebhookHandler::class)->handle($config['event'])];

@@ -5,6 +5,14 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Models\User;
+use App\Services\Assistant\FakeLlmClient;
+use App\Services\Assistant\HttpLlmClient;
+use App\Services\Assistant\LlmClient;
+use App\Services\Assistant\UnavailableLlmClient;
+use App\Services\Compare\FakeOfferProvider;
+use App\Services\Compare\OfferProvider;
+use App\Services\Compare\SerpApiShoppingProvider;
+use App\Services\Compare\UnavailableOfferProvider;
 use App\Services\Media\Contracts\VideoProcessor;
 use App\Services\Media\FakeImageFetcher;
 use App\Services\Media\FfmpegVideoProcessor;
@@ -54,7 +62,7 @@ class AppServiceProvider extends ServiceProvider
             return new LocalVisionDescriber;
         });
         $this->app->singleton(PaymentGateway::class, function (Application $app): PaymentGateway {
-            if ($app->environment('testing')) {
+            if ($app->environment('testing') || (! $app->environment('production') && (string) config('services.stripe.secret') === '')) {
                 return new FakePaymentGateway;
             }
 
@@ -67,7 +75,7 @@ class AppServiceProvider extends ServiceProvider
             );
         });
         $this->app->singleton(SellerPayouts::class, function (Application $app): SellerPayouts {
-            if ($app->environment('testing')) {
+            if ($app->environment('testing') || (! $app->environment('production') && (string) config('services.stripe.secret') === '')) {
                 return new FakeSellerPayouts;
             }
 
@@ -76,6 +84,25 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(ImageFetcher::class, fn (Application $app): ImageFetcher => $app->environment('testing')
             ? new FakeImageFetcher
             : new SafeImageFetcher);
+        $this->app->singleton(LlmClient::class, function (): LlmClient {
+            if ((string) config('llm.provider') !== 'http') {
+                return new FakeLlmClient;
+            }
+            $key = (string) config('llm.api_key');
+
+            return $key === ''
+                ? new UnavailableLlmClient
+                : new HttpLlmClient($key, (string) config('llm.url'), (string) config('llm.model'));
+        });
+        $this->app->singleton(OfferProvider::class, function (): OfferProvider {
+            if ((string) config('compare.provider') === 'serpapi') {
+                $key = (string) config('compare.serpapi_key');
+
+                return $key === '' ? new UnavailableOfferProvider : new SerpApiShoppingProvider($key);
+            }
+
+            return new FakeOfferProvider;
+        });
         $this->app->bind(VideoProcessor::class, fn (Application $app) => config('feed.video.processor') === 'passthrough'
             ? new PassthroughVideoProcessor
             : new FfmpegVideoProcessor(
@@ -107,7 +134,8 @@ class AppServiceProvider extends ServiceProvider
             429,
             $headers,
         );
-        $key = static fn (Request $request): string => (string) ($request->user()?->getKey() ?? $request->ip());
+        $key = static fn (Request $request): string => (string) ($request->user()?->getKey() ?? self::hmac((string) $request->ip()));
+        $emailKey = static fn (Request $request): string => self::hmac(strtolower(trim((string) $request->input('email', ''))));
 
         RateLimiter::for('feed-read', fn (Request $request) => Limit::perMinute(240)->by($key($request))->response($limited));
         RateLimiter::for('feed-post', fn (Request $request) => Limit::perHour((int) config('feed.limits.posts_per_hour'))->by($key($request))->response($limited));
@@ -122,6 +150,24 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('scan', fn (Request $request) => Limit::perMinute(20)->by($key($request))->response($limited));
         RateLimiter::for('payment-sync', fn (Request $request) => Limit::perMinute(30)->by($key($request))->response($limited));
         // Stripe retries with backoff; this only blunts a flood of forged requests from one address.
-        RateLimiter::for('stripe-webhook', fn (Request $request) => Limit::perMinute(600)->by((string) $request->ip())->response($limited));
+        RateLimiter::for('stripe-webhook', fn (Request $request) => Limit::perMinute(600)->by(self::hmac((string) $request->ip()))->response($limited));
+        RateLimiter::for('auth', fn (Request $request) => [
+            Limit::perMinute(10)->by('ip:'.self::hmac((string) $request->ip()))->response($limited),
+            Limit::perMinute(10)->by('email:'.$emailKey($request))->response($limited),
+        ]);
+        RateLimiter::for('admin-login', fn (Request $request) => Limit::perMinute(5)->by('admin:'.self::hmac((string) $request->ip()).':'.$emailKey($request))->response($limited));
+        RateLimiter::for('admin-moderate', fn (Request $request) => Limit::perMinute(60)->by('moderate:'.$key($request))->response($limited));
+        RateLimiter::for('devices', fn (Request $request) => Limit::perMinute(10)->by('device:'.$key($request))->response($limited));
+        RateLimiter::for('export', fn (Request $request) => Limit::perHour(3)->by('export:'.$key($request))->response($limited));
+        RateLimiter::for('delete-account', fn (Request $request) => Limit::perHour(3)->by('delete:'.$key($request))->response($limited));
+        RateLimiter::for('compare', fn (Request $request) => Limit::perMinute(30)->by('compare:'.$key($request))->response($limited));
+        RateLimiter::for('assistant', fn (Request $request) => Limit::perMinute(8)->by('assistant:'.$key($request))->response($limited));
+        RateLimiter::for('social', fn (Request $request) => Limit::perMinute(30)->by($key($request))->response($limited));
+    }
+
+    /** Cache keys are HMACs so a raw IP address is never the limiter key. */
+    private static function hmac(string $value): string
+    {
+        return hash_hmac('sha256', $value, (string) config('app.key'));
     }
 }

@@ -1,6 +1,6 @@
 import { useIsFocused } from 'expo-router';
 import { Search, ShoppingBag } from 'lucide-react-native';
-import { useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { FlatList, View, type ViewToken } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -32,6 +32,8 @@ type FeedEntry =
   | { kind: 'drop'; id: string; drop: FeedDrop }
   | { kind: 'product'; id: string; product: FeedProduct };
 
+const VIEWABILITY = { itemVisiblePercentThreshold: 80 };
+
 export function FeedScreen({ onOpenCart, header }: Props) {
   const insets = useSafeAreaInsets();
   const focused = useIsFocused();
@@ -51,14 +53,13 @@ export function FeedScreen({ onOpenCart, header }: Props) {
   }, [category, query]);
 
   const [activeId, setActiveId] = useState(entries[0]?.id ?? '');
-
-  const onViewableItemsChanged = useRef((info: { viewableItems: ViewToken[] }) => {
+  const resolvedId = entries.some((entry) => entry.id === activeId) ? activeId : (entries[0]?.id ?? '');
+  const onViewableItemsChanged = useCallback((info: { viewableItems: ViewToken[] }) => {
     const next = info.viewableItems.find((token) => token.isViewable)?.item as FeedEntry | undefined;
     if (next) {
       setActiveId(next.id);
     }
-  }).current;
-  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 80 }).current;
+  }, []);
 
   return (
     <View className="flex-1 bg-ink">
@@ -92,7 +93,7 @@ export function FeedScreen({ onOpenCart, header }: Props) {
             data={entries}
             decelerationRate="fast"
             disableIntervalMomentum
-            extraData={activeId}
+            extraData={resolvedId}
             getItemLayout={(_, index) => ({
               length: pageHeight,
               offset: pageHeight * index,
@@ -106,7 +107,7 @@ export function FeedScreen({ onOpenCart, header }: Props) {
             showsVerticalScrollIndicator={false}
             snapToAlignment="start"
             snapToInterval={pageHeight}
-            viewabilityConfig={viewabilityConfig}
+            viewabilityConfig={VIEWABILITY}
             windowSize={3}
             ListEmptyComponent={
               <View className="px-5 pt-4" style={{ height: pageHeight }}>
@@ -120,7 +121,7 @@ export function FeedScreen({ onOpenCart, header }: Props) {
             }
             renderItem={({ item }) => (
               <View style={{ height: pageHeight, paddingHorizontal: 16, paddingBottom: 96 }}>
-                <FeedPage active={item.id === activeId} entry={item} now={now} />
+                <FeedPage active={item.id === resolvedId} entry={item} now={now} />
               </View>
             )}
           />

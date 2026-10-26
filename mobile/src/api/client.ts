@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 import { readAuthToken } from '@/lib/auth-token';
 import { parseHttpUrl } from '@/lib/safe-url';
 
@@ -93,6 +95,8 @@ export class ApiConfigError extends Error {
 export type ApiOptions = {
   /** Time limit per attempt. Defaults: 15 s reads, 20 s writes, 35 s keyed writes and uploads. */
   timeoutMs?: number;
+  /** Overrides the signed-in token. Used for the separate admin session. */
+  token?: string | null;
   /**
    * Retries after an unknown outcome or a transient refusal (408, 425, 429, 5xx, REQUEST_IN_PROGRESS).
    * Default 3 for GET/HEAD and for requests with an Idempotency-Key; 0 for other writes, which are
@@ -254,7 +258,11 @@ export async function api<T>(path: string, init: RequestInit = {}, options: ApiO
   const method = (init.method ?? 'GET').toUpperCase();
   const headers = new Headers(init.headers);
   headers.set('Accept', 'application/json');
-  const token = await readAuthToken();
+  if (Platform.OS === 'web') {
+    headers.set('X-Requested-With', 'XMLHttpRequest');
+    headers.set('X-Client', 'web');
+  }
+  const token = options.token !== undefined ? options.token : await readAuthToken();
   if (token) {
     headers.set('Authorization', `Bearer ${token}`);
   }
@@ -272,7 +280,7 @@ export async function api<T>(path: string, init: RequestInit = {}, options: ApiO
       throw abortError();
     }
     try {
-      return await attemptOnce<T>(url, { ...init, method, headers }, timeoutMs, callerSignal);
+      return await attemptOnce<T>(url, { ...init, method, headers, credentials: Platform.OS === 'web' ? 'include' : 'omit' }, timeoutMs, callerSignal);
     } catch (failure) {
       if (isAbort(failure)) {
         throw failure;
@@ -314,8 +322,7 @@ export function query(params: Record<string, string | number | null | undefined>
   return parts.length > 0 ? `?${parts.join('&')}` : '';
 }
 
+/** Records an open of a tracked share. The server counts it on GET /s/{token}. */
 export function recordShareOpen(token: string): Promise<void> {
-  return api<void>(`/share-links/${encodeURIComponent(token)}/open`, {
-    method: 'POST',
-  });
+  return api<void>(`/s/${encodeURIComponent(token)}`).then(() => undefined);
 }

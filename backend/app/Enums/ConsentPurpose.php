@@ -10,9 +10,9 @@ namespace App\Enums;
  */
 enum ConsentPurpose: string
 {
-    case MarketingPush    = 'marketing_push';
-    case MarketingEmail   = 'marketing_email';
-    case Personalization  = 'personalization';
-    case Analytics        = 'analytics';
+    case MarketingPush = 'marketing_push';
+    case MarketingEmail = 'marketing_email';
+    case Personalization = 'personalization';
+    case Analytics = 'analytics';
     case ContactsMatching = 'contacts_matching';
 }

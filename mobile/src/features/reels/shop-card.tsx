@@ -4,8 +4,11 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 
 import type { ShopOffer } from '@/api/contracts';
+import { saveCartItem } from '@/api/social-commerce';
+import { expectedTotalMinor } from '@/features/payments/expected-total';
+import { purchasesEnabled } from '@/lib/flags';
 import { t } from '@/lib/i18n';
-import { formatMoney, type DisplayMoney } from '@/lib/money';
+import { formatMoney } from '@/lib/money';
 import { palette, radius } from '@/theme/tokens';
 
 type Props = {
@@ -24,7 +27,10 @@ export function ShopCard({ offer, busy, couponLabel, onBuy, onSquad, onHold, onG
   const flash = offer.flash;
   const seconds = useCountdown(flash?.ends_at ?? null);
   const liveFlash = flash !== null && seconds > 0;
-  const price = liveFlash ? discounted(offer.product.price, flash.discount_bps) : offer.product.price;
+  const price = {
+    ...offer.product.price,
+    amount_minor: expectedTotalMinor(offer, 0, 1),
+  };
 
   return (
     <View
@@ -53,7 +59,7 @@ export function ShopCard({ offer, busy, couponLabel, onBuy, onSquad, onHold, onG
           {offer.product.title}
         </Text>
         <Text style={{ color: palette.ivory, fontSize: 13 }}>
-          {offer.landed ? formatMoney(offer.landed.total) : formatMoney(price)}
+          {formatMoney(price)}
           {offer.product.squad_price ? `  ·  ${formatMoney(offer.product.squad_price)}` : ''}
           {liveFlash ? `  ${t('shop.off', { percent: String(flash.discount_bps / 100) })}` : ''}
         </Text>
@@ -79,12 +85,19 @@ export function ShopCard({ offer, busy, couponLabel, onBuy, onSquad, onHold, onG
         ) : null}
         <Text style={{ color: palette.muted, fontSize: 11 }}>{t('shop.shareEarn', { percent: String(offer.commission_bps / 100) })}</Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
-          <Chip disabled={busy || offer.product.stock < 1} label={t('shop.paySolo')} onPress={onBuy} primary />
-          <Chip disabled={busy || offer.product.stock < 1} label={t('shop.holdSquad')} onPress={onSquad} />
-          <Chip disabled={busy || offer.product.stock < 1} label={t('shop.gift')} onPress={onGift} />
-          {offer.drop_hour && offer.drop_hour.remaining > 0 ? <Chip disabled={busy} label={t('shop.dropHold')} onPress={onHold} /> : null}
-          {offer.product.try_on ? <Chip disabled={busy} label={t('shop.tryOn')} onPress={onTryOn} /> : null}
-          <Chip disabled={busy} label={t('shop.reviews')} onPress={() => router.push(`/product/${offer.product.id}`)} />
+          {purchasesEnabled ? (
+            <>
+              <Chip disabled={busy || offer.product.stock < 1} label={t('shop.paySolo')} onPress={onBuy} primary />
+              <Chip disabled={busy || offer.product.stock < 1} label={t('shop.holdSquad')} onPress={onSquad} />
+              <Chip disabled={busy || offer.product.stock < 1} label={t('shop.gift')} onPress={onGift} />
+              {offer.drop_hour && offer.drop_hour.remaining > 0 ? <Chip disabled={busy} label={t('shop.dropHold')} onPress={onHold} /> : null}
+              {offer.product.try_on ? <Chip disabled={busy} label={t('shop.tryOn')} onPress={onTryOn} /> : null}
+              <Chip disabled={busy || offer.product.stock < 1} label={t('shop.addCart')} onPress={() => void saveCartItem(offer.product.id, 1)} />
+              <Chip disabled={busy} label={t('shop.reviews')} onPress={() => router.push(`/product/${encodeURIComponent(offer.product.id)}`)} />
+            </>
+          ) : (
+            <Chip disabled={busy} label={t('compare.prices')} onPress={() => router.push({ pathname: '/compare', params: { q: offer.product.title } })} primary />
+          )}
           {busy ? <ActivityIndicator color={palette.goldSoft} size="small" /> : null}
         </View>
       </View>
@@ -111,17 +124,14 @@ function Chip({ label, onPress, disabled, primary = false }: { label: string; on
   );
 }
 
-function discounted(price: DisplayMoney, discountBps: number): DisplayMoney {
-  return {
-    ...price,
-    amount_minor: Math.floor((price.amount_minor * (10_000 - discountBps)) / 10_000),
-  };
-}
-
 function useCountdown(endsAt: string | null): number {
   const [seconds, setSeconds] = useState(() => remaining(endsAt));
-  useEffect(() => {
+  const [trackedEnd, setTrackedEnd] = useState(endsAt);
+  if (endsAt !== trackedEnd) {
+    setTrackedEnd(endsAt);
     setSeconds(remaining(endsAt));
+  }
+  useEffect(() => {
     if (endsAt === null) {
       return;
     }

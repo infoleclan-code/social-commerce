@@ -10,11 +10,11 @@ namespace App\Enums;
  */
 enum ShareChannel: string
 {
-    case CopyLink  = 'copy_link';
-    case Whatsapp  = 'whatsapp';
+    case CopyLink = 'copy_link';
+    case Whatsapp = 'whatsapp';
     case Instagram = 'instagram';
-    case Tiktok    = 'tiktok';
+    case Tiktok = 'tiktok';
     case Messenger = 'messenger';
-    case Sms       = 'sms';
-    case Other     = 'other';
+    case Sms = 'sms';
+    case Other = 'other';
 }

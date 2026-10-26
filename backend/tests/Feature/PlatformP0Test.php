@@ -17,6 +17,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
+use PHPUnit\Framework\Attributes\Group;
 use Tests\Support\BuildsCommerce;
 use Tests\Support\BuildsSocial;
 use Tests\TestCase;
@@ -27,6 +28,7 @@ final class PlatformP0Test extends TestCase
     use BuildsSocial;
     use RefreshDatabase;
 
+    #[Group('purchases')]
     public function test_wallet_cash_cannot_be_edited_outside_the_ledger(): void
     {
         $user = $this->makeUser();
@@ -50,6 +52,7 @@ final class PlatformP0Test extends TestCase
         DB::table('user_wallets')->insert(['user_id' => $other->id, 'cash_minor' => 500, 'currency' => 'USD', 'updated_at' => now()]);
     }
 
+    #[Group('purchases')]
     public function test_commission_stays_pending_until_the_return_window_closes_and_reverses_on_withdrawal(): void
     {
         $buyer = $this->makeUser();
@@ -98,6 +101,7 @@ final class PlatformP0Test extends TestCase
         $this->assertNotContains($unembedded, $ids);
     }
 
+    #[Group('purchases')]
     public function test_one_tap_authorizes_with_manual_capture_and_a_saved_card(): void
     {
         $buyer = $this->makeUser();
@@ -132,6 +136,7 @@ final class PlatformP0Test extends TestCase
         $this->assertSame('manual', $gateway->authorizations[0]['capture_method']);
     }
 
+    #[Group('purchases')]
     public function test_blind_box_requires_age_assurance_and_checkout_does_not_publish_the_purchase(): void
     {
         $buyer = $this->makeUser();
@@ -163,6 +168,7 @@ final class PlatformP0Test extends TestCase
         app(HabitScaleService::class);
     }
 
+    #[Group('purchases')]
     public function test_withdrawal_uses_fourteen_days_from_delivery(): void
     {
         $buyer = $this->makeUser();

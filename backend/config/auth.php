@@ -42,6 +42,12 @@ return [
             'driver' => 'session',
             'provider' => 'users',
         ],
+
+        // Bearer tokens whose ability is admin. A normal mobile token does not pass this guard's routes.
+        'admin' => [
+            'driver' => 'sanctum',
+            'provider' => 'users',
+        ],
     ],
 
     /*
@@ -113,5 +119,12 @@ return [
     */
 
     'password_timeout' => env('AUTH_PASSWORD_TIMEOUT', 10800),
+
+    /*
+     * Web sessions use an HttpOnly cookie. Cross-site previews (web host and API host
+     * on different domains) need SameSite=None, which forces Secure.
+     */
+    'cookie_same_site' => env('AUTH_COOKIE_SAME_SITE', 'lax'),
+    'cookie_secure' => filter_var(env('AUTH_COOKIE_SECURE', false), FILTER_VALIDATE_BOOLEAN),
 
 ];

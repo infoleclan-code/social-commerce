@@ -5,6 +5,8 @@ import { AccessibilityInfo, ActivityIndicator, Pressable, Text, View } from 'rea
 import Animated, { FadeInUp, FadeOutUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import type { DefaultPaymentMethod } from '@/api/contracts';
+import { queryKeys } from '@/api/keys';
 import { GlassSurface } from '@/components/ui/glass-surface';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { useNow } from '@/features/feed/use-now';
@@ -229,7 +231,10 @@ function actionFor(purchase: Purchase, queryClient: QueryClient, now: number): A
     return null;
   }
   if (label === 'oneTap.addCard' && !stripeBridge.supported) {
-    return null;
+    const method = queryClient.getQueryData<DefaultPaymentMethod>(queryKeys.oneTap.paymentMethod);
+    if (method?.publishable_key) {
+      return null;
+    }
   }
   return {
     label: t(label),

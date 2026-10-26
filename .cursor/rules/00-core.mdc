@@ -60,3 +60,5 @@ checkout. Leave that code untouched.
 - Like: a `feed_post_likes` row. The primary key is `(post_id, user_id)`, so liking twice is a no-op.
 - Comment: a `feed_post_comments` row. `parent_id` is null for a top-level comment; replies cannot have replies.
 - Audience: `public` or `friends`. Friends means an accepted `social_connections` row.
+- Role: `users.role` is `member` or `admin`. Admin routes use the `admin` Sanctum guard and a token whose ability is `admin`, issued only after password plus TOTP.
+- Hidden: `hidden_at` on a post or comment removes it from feeds, hashtag search, and comment lists. Remove is a soft delete. A banned user cannot sign in.

@@ -6,7 +6,7 @@ and wrote the tests that prove each fix. It covers the Laravel backend and the E
 
 | | |
 |---|---|
-| Backend test suite | **209 tests, 1,459 assertions, all passing** on PostgreSQL 16 + pgvector 0.8.7 and Redis (`php vendor/bin/phpunit`, about 30 s). 8 of them are real multi-process race tests. |
+| Backend test suite | **221 tests, 1,538 assertions, 5 skipped** on PostgreSQL 16 with pgvector 0.6 (`php vendor/bin/phpunit`). The five skips are `VectorIndexTest`: this image has no `bit_hamming_ops`, so embeddings stay `double precision[]`. On pgvector ≥ 0.8 those tests run HNSW. The 2026-10-14 run was 209 tests on pgvector 0.8.7. |
 | Coverage of the named critical paths | LedgerService **100%**, StripePaymentGateway **100%**, AutoTagService **100%**, PriceGuard **100%**, StripeWebhookHandler **100%**, OrderPayments 99.7%, CheckoutService 96.9% (pcov, lines). Concurrent checkout is proven by the multi-process suite (section 6). |
 | Vector search at 1M rows | HNSW, p50 **0.68 ms**, p95 **1.03 ms**, p99 **1.40 ms**, recall@10 **0.990** (ef_search 100, 2 vCPU). |
 | Mobile | TypeScript strict passes (0 errors), ESLint finds nothing new, 32 behaviour checks of the new client code pass (section 6.4). |

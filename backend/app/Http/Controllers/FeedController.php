@@ -28,6 +28,7 @@ final class FeedController extends Controller
     public function index(FeedIndexRequest $request): JsonResponse
     {
         $page = $this->feed->page($request->user(), $request->mode(), $request->cursor(), $request->limit());
+        FeedPostResource::warm($request, $page->posts);
 
         return FeedPostResource::collection($page->posts)
             ->additional(['meta' => ['next_cursor' => $page->nextCursor, 'mode' => $request->mode()]])

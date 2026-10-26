@@ -135,7 +135,7 @@ function MatchRow({ match, index }: { match: VisualMatch; index: number }) {
           <Text style={{ color: palette.ivory, fontSize: 12, fontWeight: '700' }}>{formatMoney(match.landed.total)}</Text>
         ) : null}
       </View>
-      <OneTapBuyCard compact product={match.product} />
+      <OneTapBuyCard compact expectedTotalMinor={match.landed?.total.amount_minor ?? null} product={match.product} />
     </Animated.View>
   );
 }

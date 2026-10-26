@@ -102,6 +102,20 @@ final class StripePaymentGateway implements PaymentGateway
         ];
     }
 
+    public function supportsTestCards(): bool
+    {
+        return false;
+    }
+
+    public function detachPaymentMethod(string $paymentMethodId): void
+    {
+        try {
+            $this->call(fn () => $this->client()->paymentMethods->detach($paymentMethodId));
+        } catch (InvalidRequestException) {
+            // Already detached, or the id was never a card.
+        }
+    }
+
     public function authorize(AuthorizeRequest $request): PaymentIntentResult
     {
         try {

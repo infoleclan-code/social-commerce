@@ -1,0 +1,88 @@
+{
+  "product_results": {
+    "title": "Nike Dunk Low",
+    "brand": "Nike",
+    "reviews": 1200,
+    "rating": 4.6,
+    "variants": [
+      {
+        "title": "Size",
+        "items": [
+          { "name": "9", "available": true },
+          { "name": "10", "selected": true, "available": true }
+        ]
+      }
+    ],
+    "stores": [
+      {
+        "name": "Finish Line",
+        "link": "https://www.finishline.com/nike-dunk-low",
+        "title": "Nike Dunk Low",
+        "price": "$105.00",
+        "extracted_price": 105,
+        "shipping": "Free delivery",
+        "shipping_extracted": 0,
+        "total": "$105.00",
+        "extracted_total": 105,
+        "details_and_offers": ["In stock online"]
+      },
+      {
+        "name": "Dick's",
+        "link": "https://www.dickssportinggoods.com/nike-dunk-low",
+        "title": "Nike Dunk Low",
+        "price": "$99.00",
+        "extracted_price": 99,
+        "shipping": "+ $12.00",
+        "shipping_extracted": 12,
+        "total": "$111.00",
+        "extracted_total": 111,
+        "details_and_offers": ["In stock online"]
+      },
+      {
+        "name": "Foot Locker",
+        "link": "https://www.footlocker.com/nike-dunk-low",
+        "title": "Nike Dunk Low",
+        "price": "$110.00",
+        "extracted_price": 110,
+        "shipping": "Free delivery on $49+",
+        "details_and_offers": ["In stock online"]
+      },
+      {
+        "name": "Zappos",
+        "link": "https://www.zappos.com/nike-dunk-low",
+        "title": "Nike Dunk Low",
+        "price": "$100.00",
+        "extracted_price": 100,
+        "shipping": "Arrives in 3 days",
+        "details_and_offers": ["In stock online"]
+      },
+      {
+        "name": "Nike",
+        "link": "https://www.nike.com/t/dunk-low",
+        "title": "Nike Dunk Low",
+        "price": "$90.00",
+        "extracted_price": 90,
+        "shipping": "Get it today ($17)",
+        "details_and_offers": ["In stock online"]
+      },
+      {
+        "name": "JD Sports",
+        "link": "https://www.jdsports.com/nike-dunk-low",
+        "title": "Nike Dunk Low",
+        "price": "$80.00",
+        "extracted_price": 80,
+        "shipping": "Arrives Tue, Oct 28",
+        "details_and_offers": ["Out of stock"]
+      },
+      {
+        "name": "Google",
+        "link": "https://www.google.com/shopping/product/16914877625280977865",
+        "title": "Nike Dunk Low",
+        "price": "$50.00",
+        "extracted_price": 50,
+        "shipping": "Free",
+        "details_and_offers": ["In stock online"]
+      }
+    ]
+  }
+}

@@ -2,8 +2,15 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\AdminController;
+use App\Http\Controllers\AuthController;
+use App\Http\Controllers\CartController;
 use App\Http\Controllers\CommerceController;
+use App\Http\Controllers\CompareAdminController;
+use App\Http\Controllers\CompareController;
+use App\Http\Controllers\DeviceController;
 use App\Http\Controllers\DifferentiatorController;
+use App\Http\Controllers\DiscoverController;
 use App\Http\Controllers\FeedCommentController;
 use App\Http\Controllers\FeedController;
 use App\Http\Controllers\GrowthController;
@@ -12,27 +19,30 @@ use App\Http\Controllers\HabitScaleController;
 use App\Http\Controllers\HashtagController;
 use App\Http\Controllers\Phase1Controller;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\SharedListController;
+use App\Http\Controllers\ShopController;
+use App\Http\Controllers\SocialController;
 use App\Http\Controllers\StripeWebhookController;
+use App\Http\Controllers\WishlistController;
 use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
 | API v1 (prefix /api from bootstrap/app.php)
 |--------------------------------------------------------------------------
-| Mobile app: Sanctum bearer tokens. Rate limiters are defined in
-| AppServiceProvider::configureRateLimiting(). Every route that moves money or reserves stock is
-| 'idempotent': it requires an Idempotency-Key header and replays the first response for that key
-| (App\Http\Middleware\EnforceIdempotency). Route parameters are plain ids:
-| services resolve them through the viewer (visibility, ownership), never by
-| implicit model binding, so a hidden post and a missing post look the same.
+| Mobile app: Sanctum bearer tokens, or an HttpOnly cookie plus X-Requested-With
+| for the web client. Routes behind the `purchases` middleware answer 404 unless
+| COMMERCE_PURCHASES is true. The launch product is price comparison.
 */
 
 Route::prefix('v1')->group(function (): void {
-    Route::post('stripe/webhook', [StripeWebhookController::class, 'handle'])->middleware('throttle:stripe-webhook');
-    Route::get('catalog/feed', [GrowthController::class, 'catalog']);
-    Route::get('cards/{kind}/{id}', [GrowthController::class, 'card'])->middleware('throttle:feed-read');
+    Route::post('stripe/webhook', [StripeWebhookController::class, 'handle'])->middleware(['throttle:stripe-webhook', 'purchases']);
+    Route::post('auth/register', [AuthController::class, 'register'])->middleware('throttle:auth');
+    Route::post('auth/login', [AuthController::class, 'login'])->middleware('throttle:auth');
+    Route::post('admin/login', [AdminController::class, 'login'])->middleware(['throttle:auth', 'throttle:admin-login']);
+    Route::get('cards/{kind}/{id}', [GrowthController::class, 'card'])->middleware(['throttle:feed-read', 'purchases']);
 
-    Route::middleware('auth:sanctum')->group(function (): void {
+    Route::middleware(['auth:sanctum', 'banned'])->group(function (): void {
         Route::get('feed', [FeedController::class, 'index'])->middleware('throttle:feed-read');
         Route::post('feed', [FeedController::class, 'store'])->middleware('throttle:feed-post');
         Route::delete('feed/{post}', [FeedController::class, 'destroy']);
@@ -44,7 +54,18 @@ Route::prefix('v1')->group(function (): void {
         Route::post('feed/{post}/comments', [FeedCommentController::class, 'store'])->middleware('throttle:feed-comment');
         Route::delete('comments/{comment}', [FeedCommentController::class, 'destroy']);
 
+        Route::post('auth/logout', [AuthController::class, 'logout']);
+        Route::post('devices', [DeviceController::class, 'store'])->middleware('throttle:devices');
+        Route::delete('devices/{device}', [DeviceController::class, 'destroy']);
+
         Route::get('me', [ProfileController::class, 'me']);
+        Route::post('users/{user}/friend-request', [SocialController::class, 'request'])->middleware('throttle:social');
+        Route::post('users/{user}/friend-accept', [SocialController::class, 'accept'])->middleware('throttle:social');
+        Route::post('users/{user}/friend-decline', [SocialController::class, 'decline'])->middleware('throttle:social');
+        Route::post('users/{user}/follow', [SocialController::class, 'follow'])->middleware('throttle:social');
+        Route::delete('users/{user}/follow', [SocialController::class, 'unfollow'])->middleware('throttle:social');
+        Route::post('users/{user}/block', [SocialController::class, 'block'])->middleware('throttle:social');
+        Route::delete('users/{user}/block', [SocialController::class, 'unblock'])->middleware('throttle:social');
         Route::get('users/{user}', [ProfileController::class, 'show']);
         Route::get('users/{user}/posts', [ProfileController::class, 'posts'])->middleware('throttle:feed-read');
 
@@ -52,11 +73,65 @@ Route::prefix('v1')->group(function (): void {
         Route::get('hashtags/trending', [HashtagController::class, 'trending'])->middleware('throttle:hashtag-read');
         Route::get('hashtags/posts', [HashtagController::class, 'posts'])->middleware('throttle:hashtag-read');
 
+        Route::get('compare', [CompareController::class, 'index'])->middleware('throttle:compare');
+        Route::get('compare/history', [CompareController::class, 'history'])->middleware('throttle:compare');
+        Route::post('compare/visual', [CompareController::class, 'visual'])->middleware('throttle:compare');
+        Route::post('compare/clicks', [CompareController::class, 'click'])->middleware('throttle:compare');
+        Route::get('shop', [ShopController::class, 'show'])->middleware('throttle:compare');
+        Route::put('shop', [ShopController::class, 'update'])->middleware('throttle:compare');
+        Route::post('assistant', [DiscoverController::class, 'assistant'])->middleware('throttle:assistant');
+        Route::get('compare/forecast', [DiscoverController::class, 'forecast'])->middleware('throttle:compare');
+        Route::post('compare/link', [DiscoverController::class, 'link'])->middleware('throttle:compare');
+        Route::get('compare/try-on', [DiscoverController::class, 'tryOn'])->middleware('throttle:compare');
+        Route::get('compare/alternatives', [DiscoverController::class, 'alternatives'])->middleware('throttle:compare');
+        Route::get('savings', [DiscoverController::class, 'savings'])->middleware('throttle:compare');
+        Route::get('shared-lists', [SharedListController::class, 'index'])->middleware('throttle:compare');
+        Route::post('shared-lists', [SharedListController::class, 'store'])->middleware('throttle:compare');
+        Route::post('shared-lists/join', [SharedListController::class, 'join'])->middleware('throttle:compare');
+        Route::get('shared-lists/{list}', [SharedListController::class, 'show'])->middleware('throttle:compare');
+        Route::post('shared-lists/{list}/items', [SharedListController::class, 'addItem'])->middleware('throttle:compare');
+        Route::post('shared-lists/{list}/votes', [SharedListController::class, 'vote'])->middleware('throttle:compare');
+        Route::post('shared-lists/{list}/pledges', [SharedListController::class, 'pledge'])->middleware('throttle:compare');
+        Route::get('wishlist', [WishlistController::class, 'index'])->middleware('throttle:compare');
+        Route::post('wishlist', [WishlistController::class, 'store'])->middleware('throttle:compare');
+        Route::delete('wishlist/{item}', [WishlistController::class, 'destroy'])->middleware('throttle:compare');
+
+        Route::post('visual-search', [Phase1Controller::class, 'visualSearch'])->middleware('throttle:scan');
+        Route::post('try-on', [HabitScaleController::class, 'renderTryOn'])->middleware(['purchases', 'throttle:scan']);
+        Route::post('try-on/{render}/poll', [HabitScaleController::class, 'openPoll'])->middleware(['purchases', 'throttle:squad']);
+        Route::get('try-on/polls/{token}', [HabitScaleController::class, 'showPoll'])->middleware(['purchases', 'throttle:feed-read']);
+        Route::post('try-on/polls/{token}/vote', [HabitScaleController::class, 'vote'])->middleware(['purchases', 'throttle:squad']);
+        Route::post('feed/{post}/auto-tag', [DifferentiatorController::class, 'autoTag'])->middleware('throttle:scan');
+        Route::post('feed/{post}/tap', [GrowthEngineController::class, 'tap'])->middleware('throttle:feed-like');
+        Route::get('taste', [GrowthEngineController::class, 'taste']);
+        Route::put('taste', [GrowthEngineController::class, 'saveTaste']);
+
+        Route::get('trust', [GrowthController::class, 'trust']);
+        Route::put('trust/limit', [GrowthController::class, 'setLimit']);
+        Route::put('trust/streaks', [GrowthController::class, 'streaks']);
+        Route::post('trust/mute', [GrowthController::class, 'mute']);
+        Route::post('trust/pause', [GrowthController::class, 'pause']);
+        Route::post('trust/unpause', [GrowthController::class, 'unpause']);
+        Route::post('trust/delete', [GrowthController::class, 'deleteAccount'])->middleware('throttle:delete-account');
+        Route::post('trust/export', [GrowthController::class, 'export'])->middleware('throttle:export');
+        Route::post('trust/age', [GrowthController::class, 'age']);
+    });
+
+    Route::middleware(['purchases', 'auth:sanctum', 'banned'])->group(function (): void {
+        Route::get('cart', [CartController::class, 'index']);
+        Route::put('cart/{product}', [CartController::class, 'put']);
+        Route::delete('cart/{product}', [CartController::class, 'destroy']);
+        Route::post('cart/checkout', [CartController::class, 'checkout'])->middleware('throttle:checkout');
+        Route::get('addresses', [CartController::class, 'addresses']);
+        Route::post('addresses', [CartController::class, 'storeAddress']);
+        Route::delete('addresses/{address}', [CartController::class, 'destroyAddress']);
+
         Route::post('checkout', [CommerceController::class, 'checkout'])->middleware(['throttle:checkout', 'idempotent']);
         Route::post('squads', [CommerceController::class, 'openSquad'])->middleware('throttle:squad');
         Route::post('squads/{squad}/join', [CommerceController::class, 'joinSquad'])->middleware('throttle:squad');
         Route::get('me/rewards', [CommerceController::class, 'rewards']);
-        Route::post('rewards/loot-box', [CommerceController::class, 'loot'])->middleware('throttle:loot');
+        Route::post('rewards/loot-box', [CommerceController::class, 'loot'])->middleware(['throttle:loot', 'idempotent']);
+        Route::get('catalog/feed', [GrowthController::class, 'catalog'])->middleware('throttle:feed-read');
         Route::post('feed/{post}/watch', [CommerceController::class, 'watch'])->middleware('throttle:watch');
         Route::get('activity', [CommerceController::class, 'activity'])->middleware('throttle:feed-read');
         Route::get('products/{product}/try-on', [CommerceController::class, 'tryOn']);
@@ -71,8 +146,8 @@ Route::prefix('v1')->group(function (): void {
         Route::get('me/ledger', [Phase1Controller::class, 'ledger']);
         Route::get('drop-hour', [Phase1Controller::class, 'dropHour'])->middleware('throttle:feed-read');
         Route::post('drop-hour/{drop}/reserve', [Phase1Controller::class, 'reserveDrop'])->middleware('throttle:checkout');
-        Route::post('visual-search', [Phase1Controller::class, 'visualSearch'])->middleware('throttle:scan');
         Route::post('checkout/one-tap', [Phase1Controller::class, 'oneTap'])->middleware(['throttle:checkout', 'idempotent']);
+        Route::get('orders', [Phase1Controller::class, 'orders']);
         Route::get('orders/{order}', [Phase1Controller::class, 'showOrder']);
         Route::post('orders/{order}/cancel', [Phase1Controller::class, 'cancelOrder'])->middleware(['throttle:checkout', 'idempotent']);
         Route::post('orders/{order}/sync', [Phase1Controller::class, 'syncOrder'])->middleware('throttle:payment-sync');
@@ -85,10 +160,6 @@ Route::prefix('v1')->group(function (): void {
         Route::post('ritual/check-in', [HabitScaleController::class, 'checkIn'])->middleware('throttle:loot');
         Route::post('ritual/missions/{kind}', [HabitScaleController::class, 'mission'])->middleware('throttle:loot');
         Route::post('ritual/spin', [HabitScaleController::class, 'spin'])->middleware('throttle:loot');
-        Route::post('try-on', [HabitScaleController::class, 'renderTryOn'])->middleware('throttle:scan');
-        Route::post('try-on/{render}/poll', [HabitScaleController::class, 'openPoll'])->middleware('throttle:squad');
-        Route::get('try-on/polls/{token}', [HabitScaleController::class, 'showPoll'])->middleware('throttle:feed-read');
-        Route::post('try-on/polls/{token}/vote', [HabitScaleController::class, 'vote'])->middleware('throttle:squad');
         Route::get('closet', [HabitScaleController::class, 'closet'])->middleware('throttle:feed-read');
         Route::post('closet/{item}/list', [HabitScaleController::class, 'listCloset'])->middleware('throttle:checkout');
         Route::get('auctions/live', [HabitScaleController::class, 'auction'])->middleware('throttle:feed-read');
@@ -113,34 +184,58 @@ Route::prefix('v1')->group(function (): void {
         Route::post('season/quests/{quest}', [GrowthController::class, 'advanceQuest']);
         Route::get('products/{product}/proof', [GrowthController::class, 'proof']);
         Route::post('hauls', [GrowthController::class, 'haul'])->middleware('throttle:feed-post');
-        Route::get('trust', [GrowthController::class, 'trust']);
-        Route::put('trust/limit', [GrowthController::class, 'setLimit']);
-        Route::put('trust/streaks', [GrowthController::class, 'streaks']);
-        Route::post('trust/mute', [GrowthController::class, 'mute']);
-        Route::post('trust/pause', [GrowthController::class, 'pause']);
-        Route::post('trust/delete', [GrowthController::class, 'deleteAccount']);
-        Route::post('trust/export', [GrowthController::class, 'export']);
-        Route::post('trust/age', [GrowthController::class, 'age']);
         Route::post('orders/{order}/withdraw', [GrowthController::class, 'withdraw'])->middleware(['throttle:checkout', 'idempotent']);
 
-        Route::get('taste', [GrowthEngineController::class, 'taste']);
-        Route::put('taste', [GrowthEngineController::class, 'saveTaste']);
-        Route::post('feed/{post}/tap', [GrowthEngineController::class, 'tap'])->middleware('throttle:feed-like');
         Route::post('products/{product}/save', [GrowthEngineController::class, 'saveProduct'])->middleware('throttle:feed-like');
         Route::get('products/{product}/offers', [GrowthEngineController::class, 'offers'])->middleware('throttle:feed-read');
         Route::get('products/{product}/related', [GrowthEngineController::class, 'related'])->middleware('throttle:feed-read');
         Route::get('seller', [GrowthEngineController::class, 'seller']);
         Route::post('seller', [GrowthEngineController::class, 'registerSeller'])->middleware('throttle:checkout');
         Route::post('seller/refresh', [GrowthEngineController::class, 'refreshSeller']);
+        Route::post('seller/orders/{order}/ship', [GrowthEngineController::class, 'ship'])->middleware('throttle:checkout');
         Route::post('seller/catalog', [GrowthEngineController::class, 'syncCatalog'])->middleware('throttle:feed-post');
-        Route::post('feed/{post}/auto-tag', [DifferentiatorController::class, 'autoTag'])->middleware('throttle:scan');
         Route::post('feed/{post}/synthetic', [DifferentiatorController::class, 'synthetic'])->middleware('throttle:feed-post');
         Route::get('orders/{order}/price-protection', [DifferentiatorController::class, 'priceProtection']);
         Route::get('products/{product}/reviews', [DifferentiatorController::class, 'reviews'])->middleware('throttle:feed-read');
         Route::post('products/{product}/reviews', [DifferentiatorController::class, 'review'])->middleware('throttle:feed-comment');
         Route::post('products/{product}/questions', [DifferentiatorController::class, 'ask'])->middleware('throttle:feed-comment');
         Route::post('questions/{question}/answer', [DifferentiatorController::class, 'answer'])->middleware('throttle:feed-comment');
+        Route::get('payment-methods', [Phase1Controller::class, 'paymentMethods']);
+        Route::delete('payment-methods/{method}', [Phase1Controller::class, 'destroyPaymentMethod']);
         Route::post('payment-methods/setup', [Phase1Controller::class, 'beginSetup'])->middleware(['throttle:checkout', 'idempotent']);
+        Route::post('payment-methods/setup/test-card', [Phase1Controller::class, 'saveTestCard'])->middleware(['throttle:checkout', 'idempotent']);
         Route::post('payment-methods/confirm', [Phase1Controller::class, 'confirmSetup'])->middleware(['throttle:checkout', 'idempotent']);
+    });
+
+    Route::prefix('admin')->middleware(['purchases', 'auth:admin', 'admin', 'banned'])->group(function (): void {
+        Route::get('auctions', [AdminController::class, 'auctions']);
+        Route::post('auctions', [AdminController::class, 'createAuction']);
+        Route::post('auctions/{auction}/schedule', [AdminController::class, 'scheduleAuction']);
+        Route::post('auctions/{auction}/end', [AdminController::class, 'endAuction']);
+        Route::get('products', [AdminController::class, 'products']);
+        Route::post('products', [AdminController::class, 'createProduct']);
+        Route::patch('products/{product}', [AdminController::class, 'updateProduct']);
+        Route::get('sellers', [AdminController::class, 'sellers']);
+        Route::post('sellers/{user}/verify', [AdminController::class, 'verifySeller']);
+        Route::post('sellers/{user}/reject', [AdminController::class, 'rejectSeller']);
+    });
+
+    Route::prefix('admin')->middleware(['auth:admin', 'admin', 'banned', 'throttle:admin-moderate'])->group(function (): void {
+        Route::get('posts', [AdminController::class, 'posts']);
+        Route::post('posts/{post}/hide', [AdminController::class, 'hidePost']);
+        Route::post('posts/{post}/unhide', [AdminController::class, 'unhidePost']);
+        Route::delete('posts/{post}', [AdminController::class, 'removePost']);
+        Route::get('comments', [AdminController::class, 'comments']);
+        Route::post('comments/{comment}/hide', [AdminController::class, 'hideComment']);
+        Route::post('comments/{comment}/unhide', [AdminController::class, 'unhideComment']);
+        Route::delete('comments/{comment}', [AdminController::class, 'removeComment']);
+        Route::get('users', [AdminController::class, 'users']);
+        Route::post('users/{user}/ban', [AdminController::class, 'ban']);
+        Route::post('users/{user}/unban', [AdminController::class, 'unban']);
+        Route::get('stores', [CompareAdminController::class, 'stores']);
+        Route::post('stores', [CompareAdminController::class, 'setStore']);
+        Route::get('coupons', [CompareAdminController::class, 'coupons']);
+        Route::post('coupons', [CompareAdminController::class, 'storeCoupon']);
+        Route::delete('coupons/{coupon}', [CompareAdminController::class, 'destroyCoupon']);
     });
 });

@@ -1,6 +1,6 @@
 import { BlurTargetView, BlurView } from 'expo-blur';
 import type { BottomTabBarProps } from 'expo-router/js-tabs';
-import { Clapperboard, Hash, Layers, ScanSearch, Shirt, UserRound, Wallet, type LucideIcon } from 'lucide-react-native';
+import { Clapperboard, Hash, Layers, Scale, ScanSearch, Shirt, UserRound, Wallet, type LucideIcon } from 'lucide-react-native';
 import { useEffect, useRef } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
@@ -11,6 +11,7 @@ const HIDDEN_TABS = new Set(['index', 'drops', 'closet', 'wallet']);
 
 const ICONS: Record<string, LucideIcon> = {
   index: ScanSearch,
+  compare: Scale,
   reels: Clapperboard,
   explore: Hash,
   drops: Layers,

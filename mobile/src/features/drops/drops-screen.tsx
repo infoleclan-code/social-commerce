@@ -1,6 +1,6 @@
 import { useIsFocused } from 'expo-router';
 import { Search } from 'lucide-react-native';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FlatList, Text, TextInput, View, type ViewToken } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -18,6 +18,7 @@ import { useReelSocialStore } from '@/stores/reel-social';
 import { palette, radius } from '@/theme/tokens';
 
 const EMPTY_COMMENTS: string[] = [];
+const VIEWABILITY = { itemVisiblePercentThreshold: 80 };
 
 export function DropsScreen() {
   const insets = useSafeAreaInsets();
@@ -46,21 +47,13 @@ export function DropsScreen() {
     useDupeScanStore.getState().close();
   }, [focused]);
 
-  useEffect(() => {
-    const first = products[0];
-    if (first && !products.some((product) => product.id === activeId)) {
-      setActiveId(first.id);
-    }
-  }, [activeId, products]);
-
-  const onViewableItemsChanged = useRef((info: { viewableItems: ViewToken[] }) => {
+  const resolvedId = products.some((product) => product.id === activeId) ? activeId : (products[0]?.id ?? '');
+  const onViewableItemsChanged = useCallback((info: { viewableItems: ViewToken[] }) => {
     const next = info.viewableItems.find((token) => token.isViewable)?.item as FeedProduct | undefined;
     if (next) {
       setActiveId(next.id);
     }
-  }).current;
-
-  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 80 }).current;
+  }, []);
 
   return (
     <View className="flex-1 bg-ink">
@@ -76,7 +69,7 @@ export function DropsScreen() {
             data={products}
             decelerationRate="fast"
             disableIntervalMomentum
-            extraData={activeId}
+            extraData={resolvedId}
             getItemLayout={(_, index) => ({
               length: pageHeight,
               offset: pageHeight * index,
@@ -86,11 +79,12 @@ export function DropsScreen() {
             keyExtractor={(item) => item.id}
             maxToRenderPerBatch={1}
             onViewableItemsChanged={onViewableItemsChanged}
+            viewabilityConfig={VIEWABILITY}
             pagingEnabled
             renderItem={({ item }) => (
               <View style={{ height: pageHeight }}>
                 <ReelPage
-                  active={item.id === activeId}
+                  active={item.id === resolvedId}
                   bottomInset={bottomInset}
                   now={now}
                   onComment={setCommentFor}
@@ -102,7 +96,6 @@ export function DropsScreen() {
             showsVerticalScrollIndicator={false}
             snapToAlignment="start"
             snapToInterval={pageHeight}
-            viewabilityConfig={viewabilityConfig}
             windowSize={3}
             ListEmptyComponent={
               <View className="px-5 pt-24" style={{ height: pageHeight }}>

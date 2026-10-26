@@ -12,6 +12,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
+use PHPUnit\Framework\Attributes\Group;
 use Tests\Support\BuildsCommerce;
 use Tests\Support\BuildsSocial;
 use Tests\TestCase;
@@ -21,6 +22,7 @@ use Tests\TestCase;
  * declines, 3-D Secure, lost responses and timeouts. The invariant checked everywhere: stock, money and
  * order state never disagree, whatever Stripe answers (or fails to answer).
  */
+#[Group('purchases')]
 final class CheckoutPaymentFlowTest extends TestCase
 {
     use BuildsCommerce;

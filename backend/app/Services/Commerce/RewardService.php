@@ -6,6 +6,7 @@ namespace App\Services\Commerce;
 
 use App\Exceptions\ApiException;
 use App\Models\User;
+use App\Support\Currency;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use LogicException;
@@ -84,11 +85,7 @@ final class RewardService
         return [
             'coins' => (int) ($wallet->coins ?? 0),
             'xp' => (int) ($wallet->xp ?? 0),
-            'cash' => [
-                'amount_minor' => (int) ($wallet->cash_minor ?? 0),
-                'currency' => $wallet->currency ?? 'USD',
-                'minor_unit' => 2,
-            ],
+            'cash' => Currency::money((int) ($wallet->cash_minor ?? 0), (string) ($wallet->currency ?? 'USD')),
             'coupons' => $coupons,
         ];
     }

@@ -11,7 +11,7 @@ namespace App\Enums;
 enum ConsentSource: string
 {
     case Onboarding = 'onboarding';
-    case Settings   = 'settings';
-    case Prompt     = 'prompt';
-    case Api        = 'api';
+    case Settings = 'settings';
+    case Prompt = 'prompt';
+    case Api = 'api';
 }

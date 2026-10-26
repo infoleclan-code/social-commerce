@@ -17,6 +17,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
+use PHPUnit\Framework\Attributes\Group;
 use Symfony\Component\Process\Process;
 use Tests\Support\BuildsCommerce;
 use Tests\Support\BuildsSocial;
@@ -29,6 +30,7 @@ final class CriticalFlowsTest extends TestCase
     use BuildsSocial;
     use RefreshDatabase;
 
+    #[Group('purchases')]
     public function test_webhook_rejects_a_bad_signature_and_a_refund_reverses_once(): void
     {
         $buyer = $this->makeUser();
@@ -61,6 +63,7 @@ final class CriticalFlowsTest extends TestCase
         $this->assertSame(1, DB::table('stripe_events')->where('id', $event['id'])->count());
     }
 
+    #[Group('purchases')]
     public function test_a_captured_intent_is_not_captured_again_by_the_webhook(): void
     {
         $buyer = $this->makeUser();
@@ -76,6 +79,7 @@ final class CriticalFlowsTest extends TestCase
         $this->assertSame($journals, DB::table('ledger_journals')->count());
     }
 
+    #[Group('purchases')]
     public function test_payment_intent_is_manual_capture_and_the_same_key_authorizes_once(): void
     {
         $params = (new StripePaymentGateway(''))->paymentIntentParams(new AuthorizeRequest('cus_1', 'pm_1', 2500, 'USD', 'order:x:authorize', ['order_id' => 'x']));
@@ -100,6 +104,7 @@ final class CriticalFlowsTest extends TestCase
         $this->assertSame(4, (int) DB::table('products')->where('id', $product)->value('stock'));
     }
 
+    #[Group('purchases')]
     public function test_commission_stays_pending_until_the_window_closes_and_withdrawal_reverses_it(): void
     {
         $buyer = $this->makeUser();
@@ -120,6 +125,7 @@ final class CriticalFlowsTest extends TestCase
         $this->assertCount(1, $this->stripe()->refunds);
     }
 
+    #[Group('purchases')]
     public function test_an_unbalanced_journal_cannot_commit(): void
     {
         $race = $this->raceConnection();
@@ -154,6 +160,7 @@ final class CriticalFlowsTest extends TestCase
         $this->assertSame(0, $race->table('ledger_journals')->where('id', $journal)->count());
     }
 
+    #[Group('purchases')]
     public function test_two_concurrent_inserts_cannot_create_two_charges(): void
     {
         $race = $this->raceConnection();
@@ -213,6 +220,7 @@ final class CriticalFlowsTest extends TestCase
         }
     }
 
+    #[Group('purchases')]
     public function test_two_concurrent_journals_both_balance(): void
     {
         $account = 'platform:race-'.substr(str_replace('-', '', (string) Str::uuid7()), 0, 12);

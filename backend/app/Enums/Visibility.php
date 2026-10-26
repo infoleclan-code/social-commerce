@@ -12,5 +12,5 @@ enum Visibility: string
 {
     case Private = 'private';
     case Friends = 'friends';
-    case Public  = 'public';
+    case Public = 'public';
 }

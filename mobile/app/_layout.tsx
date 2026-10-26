@@ -1,4 +1,4 @@
-import 'react-native-gesture-handler';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import '../global.css';
 
 import { QueryClientProvider } from '@tanstack/react-query';
@@ -8,11 +8,13 @@ import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
 import * as Linking from 'expo-linking';
 import { colorScheme } from 'nativewind';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { BackHandler, Platform } from 'react-native';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { createQueryClient } from '@/api/query-client';
+import { AuthScreen } from '@/features/auth/auth-screen';
+import { registerPushDevice } from '@/features/auth/register-push';
+import { useSession } from '@/stores/session';
 import { DupeSearchOverlay } from '@/features/feed/dupe-search-overlay';
 import { ProductSheet } from '@/features/feed/product-sheet';
 import { CheckoutSheet } from '@/features/checkout/checkout-sheet';
@@ -20,6 +22,7 @@ import { OrderTracker } from '@/features/closet/order-tracker';
 import { VisualSearch } from '@/features/search/visual-search';
 import { DupeFinderSheet } from '@/features/dupes/dupe-finder-sheet';
 import { OneTapBanner } from '@/features/one-tap/one-tap-banner';
+import { purchasesEnabled } from '@/lib/flags';
 import { stripeBridge } from '@/features/payments/stripe-bridge';
 import { CommentsSheet } from '@/features/reels/comments-sheet';
 import { parseShareToken } from '@/lib/deep-links';
@@ -43,6 +46,25 @@ function GlobalSearch() {
     return null;
   }
   return open ? <VisualSearch /> : null;
+}
+
+function SessionGate({ children }: { children: ReactNode }) {
+  const ready = useSession((state) => state.ready);
+  const signedIn = useSession((state) => state.signedIn);
+  useEffect(() => {
+    void useSession.getState().refresh().then(() => {
+      if (useSession.getState().signedIn) {
+        void registerPushDevice();
+      }
+    });
+  }, []);
+  if (!ready) {
+    return null;
+  }
+  if (!signedIn) {
+    return <AuthScreen />;
+  }
+  return children;
 }
 
 function lockDarkMode(): void {
@@ -158,6 +180,7 @@ export default function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <ThemeProvider value={navigationTheme}>
           <StatusBar style="light" />
+          <SessionGate>
           <Stack
             screenOptions={{
               headerShown: false,
@@ -168,6 +191,9 @@ export default function RootLayout() {
             <Stack.Screen name="(tabs)" />
             <Stack.Screen name="user/[id]" options={{ animation: 'slide_from_right' }} />
             <Stack.Screen name="cart" />
+            <Stack.Screen name="cards" />
+            <Stack.Screen name="admin" />
+            <Stack.Screen name="legal" />
             <Stack.Screen name="scan" options={{ animation: 'slide_from_bottom', gestureEnabled: true }} />
             <Stack.Screen name="play" />
             <Stack.Screen name="grow" />
@@ -175,16 +201,22 @@ export default function RootLayout() {
             <Stack.Screen name="taste" />
             <Stack.Screen name="sell" />
             <Stack.Screen name="product/[id]" />
+            <Stack.Screen name="orders" />
+            <Stack.Screen name="assistant" />
+            <Stack.Screen name="lists" />
+            <Stack.Screen name="try-on" />
+            <Stack.Screen name="savings" />
           </Stack>
+          </SessionGate>
           <SheetNavigationReset />
           <ProductSheet />
           <DupeFinderSheet />
-          <CheckoutSheet />
-          <OrderTracker />
+          {purchasesEnabled ? <CheckoutSheet /> : null}
+          {purchasesEnabled ? <OrderTracker /> : null}
           <DupeSearchOverlay />
           <GlobalSearch />
           <CommentsSheet />
-          <OneTapBanner />
+          {purchasesEnabled ? <OneTapBanner /> : null}
         </ThemeProvider>
       </QueryClientProvider>
     </GestureHandlerRootView>

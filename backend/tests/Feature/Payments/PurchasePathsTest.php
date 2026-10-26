@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
+use PHPUnit\Framework\Attributes\Group;
 use Tests\Support\BuildsCommerce;
 use Tests\Support\BuildsSocial;
 use Tests\TestCase;
@@ -19,6 +20,7 @@ use Tests\TestCase;
  * Squads, gifts, blind boxes, withdrawals and saved cards: every one is a real card payment now, and
  * none of them can produce a "paid" order without a captured PaymentIntent.
  */
+#[Group('purchases')]
 final class PurchasePathsTest extends TestCase
 {
     use BuildsCommerce;
@@ -82,9 +84,9 @@ final class PurchasePathsTest extends TestCase
         DB::table('squads')->insert(['id' => $squad, 'product_id' => $this->catalogProduct(), 'host_id' => $host->id, 'discount_bps_per_member' => 500, 'max_members' => 2, 'floor_price_minor' => 500, 'expires_at' => now()->addDay(), 'created_at' => now()]);
         DB::table('squad_members')->insert(['squad_id' => $squad, 'user_id' => $host->id, 'joined_at' => now()]);
         Sanctum::actingAs($this->makeUser());
-        $this->postJson('/api/v1/squads/'.$squad.'/join')->assertOk()->assertJsonPath('data.members', 2);
-        Sanctum::actingAs($this->makeUser());
-        $this->postJson('/api/v1/squads/'.$squad.'/join')->assertStatus(409)->assertJsonPath('code', 'SQUAD_CLOSED');
+        $this->postJson('/api/v1/squads/'.$squad.'/join')->assertOk()->assertJsonPath('data.members', 0);
+        $this->assertSame(1, DB::table('squad_members')->where('squad_id', $squad)->count());
+        DB::table('squad_members')->insert(['squad_id' => $squad, 'user_id' => $this->makeUser()->id, 'joined_at' => now()]);
 
         $this->expectException(QueryException::class);
         DB::table('squad_members')->insert(['squad_id' => $squad, 'user_id' => $this->makeUser()->id, 'joined_at' => now()]);

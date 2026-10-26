@@ -35,6 +35,13 @@ final class OrderEffects
         $orderId = (string) $order->id;
         $currency = (string) $order->currency;
         $this->ledger->recordSale($orderId, $amountReceived, $currency);
+        $plannedFee = (int) ($order->platform_fee_minor ?? 0);
+        $orderTotal = (int) $order->total_minor;
+        $fee = $orderTotal > 0 ? intdiv($plannedFee * $amountReceived, $orderTotal) : 0;
+        if ($fee !== $plannedFee) {
+            DB::table('orders')->where('id', $orderId)->update(['platform_fee_minor' => $fee]);
+        }
+        $this->ledger->recordPlatformFee($orderId, $fee, $currency);
 
         if ($order->creator_id !== null && (int) $order->creator_commission_minor > 0) {
             $this->ledger->pendCommission((string) $order->creator_id, $orderId, (int) $order->creator_commission_minor, $currency);
@@ -79,8 +86,8 @@ final class OrderEffects
         DB::table('gifts')->where('order_id', $orderId)->whereIn('status', ['pending', 'paid'])->update(['status' => 'cancelled']);
         DB::table('blind_pulls')->where('order_id', $orderId)->where('status', 'pending')->update(['status' => 'failed']);
         DB::table('night_holds')->where('order_id', $orderId)->where('status', 'held')->update(['status' => 'cancelled']);
-        if ($order->purpose === 'squad' && $order->squad_id !== null) {
-            DB::table('squad_members')->where('squad_id', $order->squad_id)->where('user_id', $order->buyer_id)->delete();
+        if ($order->squad_id !== null) {
+            SquadPriceService::releaseSeat((string) $order->squad_id, (string) $order->buyer_id);
         }
     }
 
@@ -93,5 +100,8 @@ final class OrderEffects
         DB::table('gifts')->where('order_id', $orderId)->whereIn('status', ['pending', 'paid', 'claimed'])->update(['status' => 'cancelled']);
         DB::table('night_holds')->where('order_id', $orderId)->where('status', 'held')->update(['status' => 'cancelled']);
         DB::table('price_protections')->where('order_id', $orderId)->where('protected_until', '>', now())->update(['protected_until' => now()]);
+        if ($order->squad_id !== null) {
+            SquadPriceService::releaseSeat((string) $order->squad_id, (string) $order->buyer_id);
+        }
     }
 }

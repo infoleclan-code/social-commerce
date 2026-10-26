@@ -19,6 +19,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
+use PHPUnit\Framework\Attributes\Group;
 use Tests\Support\BuildsCommerce;
 use Tests\Support\BuildsSocial;
 use Tests\TestCase;
@@ -27,6 +28,7 @@ use Tests\TestCase;
  * The branches that only bad luck reaches: Stripe failing mid-capture, mid-cancel and mid-refund,
  * intents that do not match, compensations, referral commission budgets, and invalid identifiers.
  */
+#[Group('purchases')]
 final class PaymentEdgeCasesTest extends TestCase
 {
     use BuildsCommerce;
@@ -144,7 +146,8 @@ final class PaymentEdgeCasesTest extends TestCase
         $payments->apply($order, new PaymentIntentResult($intent, 'succeeded', 3_000, 0, 2_000, 'USD'), 'test');
         $this->assertSame('captured', DB::table('orders')->where('id', $order)->value('payment_status'));
         $this->assertSame(2, DB::table('payment_anomalies')->where('kind', 'amount_mismatch')->count());
-        $this->assertSame(2_000, app(LedgerService::class)->balance(LedgerService::PLATFORM_SALES));
+        $this->assertSame(1_800, app(LedgerService::class)->balance(LedgerService::PLATFORM_SALES), 'Captured 2 000, platform fee is 10% of that.');
+        $this->assertSame(200, app(LedgerService::class)->balance(LedgerService::PLATFORM_FEE));
     }
 
     public function test_a_failing_background_job_is_logged_and_left_for_the_next_run(): void
@@ -212,7 +215,8 @@ final class PaymentEdgeCasesTest extends TestCase
         $this->assertApiError('OUT_OF_STOCK', fn () => $checkout->checkout($buyer, $product, null, null, null, 9, 'too-many-01'));
         $this->assertApiError('COUPON_INVALID', fn () => $checkout->checkout($buyer, $product, null, null, (string) Str::uuid7(), 1, 'coupon-key-1'));
         $squad = $checkout->openSquad($this->makeUser(), $product, null)['id'];
-        $this->assertApiError('SQUAD_CLOSED', fn () => $checkout->checkout($buyer, $product, null, $squad, null, 1, 'squad-key-01'));
+        $this->assertSame(0, $checkout->joinSquad($buyer, $squad)['members']);
+        $this->assertSame(0, DB::table('squad_members')->where('squad_id', $squad)->count(), 'An unpaid join holds no seat.');
         $this->assertApiError('OUT_OF_STOCK', fn () => $checkout->openSquad($buyer, $blocked, null));
         $this->assertApiError('SQUAD_CLOSED', fn () => $checkout->joinSquad($buyer, (string) Str::uuid7()));
 
@@ -220,10 +224,11 @@ final class PaymentEdgeCasesTest extends TestCase
         $this->assertTrue($replay['replayed']);
         $this->assertSame(4, (int) DB::table('products')->where('id', $product)->value('stock'));
 
-        $joined = $checkout->joinSquad($buyer, $squad);
-        $this->assertSame(2, $joined['members']);
-        $withSquad = $checkout->checkout($buyer, $product, null, $squad, null, 1, 'squad-key-02');
-        $this->assertSame(1_000, $withSquad['discount_bps'], 'Two members x 5%.');
+        $solo = $checkout->checkout($buyer, $product, null, $squad, null, 1, 'squad-key-01');
+        $this->assertSame(500, $solo['discount_bps'], 'One authorized member x 5%.');
+        $friend = $this->buyer();
+        $withSquad = $checkout->checkout($friend, $product, null, $squad, null, 1, 'squad-key-02');
+        $this->assertSame(1_000, $withSquad['discount_bps'], 'Two authorized members x 5%.');
     }
 
     public function test_price_guard_settle_ignores_unknown_and_refunded_orders_and_ledger_noops(): void

@@ -1,7 +1,7 @@
 import { useEvent, useEventListener } from 'expo';
 import { Image } from 'expo-image';
 import { useVideoPlayer, VideoView, type VideoPlayer } from 'expo-video';
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming, type SharedValue } from 'react-native-reanimated';
 
@@ -35,6 +35,10 @@ function configure(player: VideoPlayer, muted: boolean): void {
   };
 }
 
+function applyMuted(player: VideoPlayer, muted: boolean): void {
+  player.muted = muted;
+}
+
 function syncPlayback(player: VideoPlayer, playing: boolean): void {
   if (!playing) {
     player.pause();
@@ -62,12 +66,10 @@ function syncActive(player: VideoPlayer, active: boolean): void {
 export function ReelVideo({ uri, posterUri, active, playing, muted, progress }: Props) {
   const player = useVideoPlayer({ uri, useCaching: true }, (instance) => configure(instance, muted));
   const { status } = useEvent(player, 'statusChange', { status: player.status });
-  const playingRef = useRef(playing);
-  playingRef.current = playing;
   const posterOpacity = useSharedValue(posterUri ? 1 : 0);
 
   useEffect(() => {
-    player.muted = muted;
+    applyMuted(player, muted);
   }, [player, muted]);
 
   useEffect(() => {
@@ -80,9 +82,9 @@ export function ReelVideo({ uri, posterUri, active, playing, muted, progress }: 
 
   useEffect(() => {
     if (status === 'readyToPlay') {
-      syncPlayback(player, playingRef.current);
+      syncPlayback(player, playing);
     }
-  }, [player, status]);
+  }, [player, status, playing]);
 
   useEventListener(player, 'timeUpdate', ({ currentTime }) => {
     const duration = player.duration;

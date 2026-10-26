@@ -85,7 +85,7 @@ class FeedPost extends Model
     {
         $viewerId = $viewer->getKey();
 
-        $query->where(function (Builder $visible) use ($viewerId): void {
+        $query->whereNull('feed_posts.hidden_at')->where(function (Builder $visible) use ($viewerId): void {
             $visible->where('feed_posts.audience', FeedAudience::Public->value)
                 ->orWhere('feed_posts.user_id', $viewerId)
                 ->orWhere(function (Builder $friends) use ($viewerId): void {

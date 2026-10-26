@@ -1,8 +1,150 @@
-# Social commerce platform
+# Price comparison
 
-Laravel 13 + PostgreSQL backend, Expo app and Cursor rules for a social e-commerce + rewards app:
-universal cart, affiliate cashback, group drops, multi-tier attribution, digital closet, P2P resale
-(release 1), and a Reels-style feed, AI visual search and 1-Tap checkout (release 2).
+People search for a product (text, or a photo that becomes a search). The app shows the three best
+current prices from different external stores, with shipping when the store published it, and opens
+the store’s own product page. This app is not the merchant and does not take payment.
+
+The social layer (Reels, Explore, follows, profiles) is discovery that leads into that comparison.
+In-app checkout, cart payments, squads, auctions, gifts, blind boxes, seller payouts, wallet, and
+loot boxes stay in the tree behind `COMMERCE_PURCHASES`, which is **off** unless set to `true`.
+Those routes answer 404 while the flag is off.
+
+Laravel 12 (`laravel/framework` ^12) and PostgreSQL back the API. The Expo app is the client.
+`stripe/stripe-php` remains for the flagged purchase code. Schema changes after the core SQL live in
+`backend/database/migrations/`.
+
+## Compare prices
+
+`GET /api/v1/compare?q=nike` ranks the top three in-stock offers from different stores by landed
+total: item price, plus shipping when the store published it, plus tax or VAT when the store
+published it and it is not already included in the item price. Unknown shipping or tax is labeled
+and is not treated as free. A currency with no rate is dropped rather than relabeled. Prices are
+converted with rates from `fx:refresh` (`FX_FEED_URL`, Frankfurter by default). Until that feed
+succeeds, `USD`, `EUR`, and `GBP` use the static fallback in `config/compare.php`.
+
+`country` (or the shopper’s saved country, or a proxy country header / Accept-Language) is sent to
+the provider as `gl` and `hl`. `GET /api/v1/shop` and `PUT /api/v1/shop` store the override. The
+public profile does not include it. When a store lists the countries it ships to, the offer says
+whether that includes the shopper’s country.
+
+`GET /api/v1/compare/history` returns up to 90 days of observed landed prices and a hint:
+`good_now`, `wait`, `typical`, or `learning`. `prices:snapshot` (hourly) re-checks recent searches
+and saved alerts so the chart gains a point. Filters: `brand`, `size`, `min_minor`, `max_minor`,
+`in_stock`, `sort` (`total_asc`, `total_desc`, `price_asc`), `currency`, `country`.
+
+`POST /api/v1/compare/visual` accepts a JPEG, PNG, or WebP up to 500 KB. With the fake provider it
+uses the demo Nike search. With SerpAPI it uploads the image and reads the first Google Lens product
+title, then runs the same top-3 search. Out-of-stock offers are not shown as current.
+
+`POST /api/v1/compare/clicks` with `offer_id` records the store host and returns the https URL,
+appending `AFFILIATE_QUERY_PARAM` and `AFFILIATE_ID` when both are set. The client cannot submit an
+arbitrary URL. A result older than `COMPARE_CACHE_TTL` (default 600 seconds) is not served, and a
+provider error is `503 COMPARE_UNAVAILABLE` rather than a stale hit.
+
+`COMPARE_PROVIDER=fake` (the default in `.env.example`) returns a deterministic catalog for local
+development and tests. `COMPARE_PROVIDER=serpapi` calls [SerpAPI Google Shopping](https://serpapi.com/google-shopping-api)
+(`engine=google_shopping`) with `SERPAPI_API_KEY`, then [Google Immersive Product](https://serpapi.com/google-immersive-product-api)
+for each candidate’s sellers. A shopping row has no merchant link. Brand, size, and the store URL
+come from the immersive product. A successful response that maps to no sellers is not cached.
+A shopping response with an empty product list is a genuine miss and is cached. The HTTP timeout is
+`COMPARE_TIMEOUT` (default 12 seconds, and never below 8). If that provider is selected and the key
+is empty, search returns 503. It does not silently switch to the fake catalog. Shipping is known only
+when the store published a currency amount or an unconditional “Free delivery”. A threshold such as
+“Free delivery on $49+”, a date, or a day count stays unknown and is ranked by the item price. A
+currency missing from the rate table is dropped rather than relabeled. Store links must be https and
+must not point at SerpAPI, Google, or an IP address.
+
+`POST /api/v1/wishlist` saves a search. An optional `target_minor` alerts when the best in-stock total
+reaches that price. `prices:check-alerts` (hourly) emails, and sends an Expo push when a device token
+is registered, on a drop or a newly reached target. It does not repeat a target that was already met.
+Registration sends a welcome email. Mail uses `MAIL_MAILER` (`log` locally, `smtp` in `.env.production.example`).
+
+Store ratings and review counts come from the provider when it publishes them. A rating of 4 or more
+with at least 100 reviews is labeled trusted. Admins flag or block a host with `POST /api/v1/admin/stores`
+(`open`, `flagged`, or `blocked`). A blocked host is left out of results and its link is refused.
+`POST /api/v1/admin/coupons` adds a code for a store host; matching offers include it.
+
+`POST /api/v1/assistant` sends a plain-language request to `LLM_PROVIDER`. `fake` (the default) returns a fixed note and then the normal top-3 search. `http` calls an OpenAI-compatible chat endpoint with `LLM_API_KEY`, `LLM_MODEL`, and `LLM_API_URL`. An empty key returns 503 and does not fall back to the fake note. The route is limited to 8 requests a minute.
+
+`GET /api/v1/compare/forecast` estimates buy-now or wait from the price history and a typical sale calendar (Black Friday, Prime Day, Singles’ Day, and others). The response is labeled as an estimate.
+
+`POST /api/v1/compare/link` accepts a TikTok, Instagram, or YouTube https URL, reads the page thumbnail (`og:image`), and runs the same photo search. It does not download the video. A rejected host is 422. A missing thumbnail is 503.
+
+`GET /api/v1/compare/try-on?category=shoes` describes a camera guide for shoes and glasses. Other categories get a still preview. It is not a body scan.
+
+`GET /api/v1/compare/alternatives` suggests another brand in the same kind of search when that option is cheaper, with the percent saved.
+
+Shared lists (`/api/v1/shared-lists`) can be joined with a token, voted on, and used to tally pledges. Pledges are not payments.
+
+`GET /api/v1/savings` totals the gap between the offer someone opened and the highest offer in that top 3, plus a few badges.
+
+`extension/` is a Manifest V3 Chrome and Firefox extension. The popup stores the API base URL and a
+Sanctum token. On a product page it asks the API whether another store is cheaper.
+
+SerpAPI shopping and immersive results often omit tax and the countries a store ships to. Those stay
+unknown and are labeled. Google Lens needs `SERPAPI_API_KEY`. Currencies beyond the static fallback
+appear after `fx:refresh` succeeds. The owner must supply, when they want live prices, photos, and
+mail: `SERPAPI_API_KEY`, `FX_FEED_URL` (optional; a default is set), `LLM_PROVIDER` (`fake` by default; `http` needs `LLM_API_KEY`, `LLM_MODEL`, and `LLM_API_URL`), `AFFILIATE_QUERY_PARAM`,
+`AFFILIATE_ID`, `SENTRY_LARAVEL_DSN`, and the `MAIL_*` SMTP settings.
+
+## Launch
+
+- `Dockerfile` runs nginx in front of PHP-FPM (not `artisan serve`). `compose.yaml` adds PostgreSQL
+  (pgvector), a `scheduler` service (`schedule:work`), and a `queue` service (`queue:work`). Copy
+  `backend/.env.production.example` to `backend/.env`, set `APP_KEY`, and keep `APP_DEBUG=false`.
+  The image installs the PostgreSQL 16 client so `db:backup` can run `pg_dump` against the pgvector 16
+  server. Dumps go to the `backups` volume mounted at `storage/app/backups`.
+- `deploy/crontab` and `deploy/supervisor.conf` use `/var/www/backend` on a host that is not using Compose.
+- `GET /up` checks the database and, unless the queue driver is `sync`, the queue. The body is
+  `{status: up}` or `{status: down}` with no exception text.
+- `php artisan db:backup` writes `pg_dump` output under `storage/app/backups` and keeps seven files.
+  It is scheduled daily at 02:10.
+- `SENTRY_LARAVEL_DSN` posts a Sentry envelope (`event_id`, `sent_at`, and a timestamped event). An empty DSN does nothing.
+- `LOG_LEVEL=error` in the production example.
+- The web session is an HttpOnly cookie (`AUTH_COOKIE_SAME_SITE`, `AUTH_COOKIE_SECURE`). Native apps
+  still use the bearer token. A cookie is only accepted together with `X-Requested-With`.
+- Terms, privacy, and the affiliate disclosure are on the Legal screen in the app.
+- CI runs Pint, PHPUnit with `COMMERCE_PURCHASES=true`, PHPUnit again with `COMMERCE_PURCHASES=false`
+  (purchase tests are grouped and skipped), `tsc`, ESLint, and `npm audit` (the audit step is report-only).
+
+`APP_KEY` is generated per environment and is not committed.
+
+Demo buyer: `buyer@example.com` / `correct-horse` / `demo_buyer`. The admin password and TOTP secret
+are generated by `php artisan db:seed --class=Database\\Seeders\\DemoAccountsSeeder` and printed once.
+They are not in git. A later run prints a new pair only when that admin is missing or the stored
+secret is still the one that used to be committed. To rotate a secret that was already generated,
+clear `users.totp_secret` for that admin and run the seeder again. `DemoAccountsSeeder` runs only
+when `APP_ENV=local` (including the preview). `DemoReelsSeeder` does nothing when `APP_ENV=production`.
+
+## Audit fixes (2026-10-23)
+
+Money and visibility:
+
+- Checkout, 1-Tap, and gifts charge the landed total: discounted merchandise, shipping once (plus 800 minor units when the parcel crosses a border), duty on discounted merchandise when it crosses a border, and VAT on merchandise plus shipping for an EU destination. The buyer’s saved address country wins over the profile country when `address_id` is sent. `expected_total_minor` is optional; a mismatch returns `409 PRICE_CHANGED`. Squad card holds stay merchandise-only.
+- `POST /squads/{id}/join` does not reserve a seat and does not change the discount. `max_members` and the checkout discount count only buyers with a paid or authorized order. `SquadPriceService::settle` unlocks capture only when at least two of those squad orders exist, and only for a caller who has paid.
+- `GET /auctions/live` is read-only. A bid authorizes the saved card first and stores the PaymentIntent; the previous leader’s hold is cancelled. Auction wins are holds, not a new order purpose.
+- `POST /rewards/loot-box` is idempotent. The client keeps one Idempotency-Key until the call succeeds.
+- `GET /api/v1/catalog/feed` requires a Sanctum token and lists only active products from verified sellers (or unsold catalog rows). Store pages use `FeedPost::visibleTo`, so friends-only posts stay hidden.
+- Gift street addresses are Laravel-encrypted in `address_ciphertext`. Claiming the same gift again returns it to the same person.
+- pgvector below 0.8 (this image ships 0.6.0, which has no `bit_hamming_ops`) stores embeddings as `double precision[]` and scans them exactly. Production should install pgvector ≥ 0.8 for HNSW.
+
+Accounts and commerce:
+
+- `POST /api/v1/auth/register` and `/auth/login` (10/minute) issue a Sanctum token that expires after `SANCTUM_EXPIRATION` minutes (default 30 days). `POST /api/v1/auth/logout` deletes the current token and can revoke one device. Registration leaves `social_feed_enabled` off. Bad credentials are `422 AUTH_FAILED`.
+- Friendship is mutual. Follows are one-way (`POST` and `DELETE /users/{id}/follow`). `followers` and `following` are those follow rows, counted separately from friendship and block. A block deletes both follow directions. `viewer.connection` is `self`, `none`, `pending_out`, `pending_in`, `friends`, or `blocked`.
+- Cart lines, encrypted shipping addresses, `POST /cart/checkout` (one Idempotency-Key, a derived key per line), `GET /orders` with fulfillment and tracking, and `POST /orders/{id}/withdraw` for a return. Sellers mark `POST /seller/orders/{id}/ship` only for their own processing or paid orders.
+- Account deletion sets `deletion_requested_at` and pauses the account. After 14 days, `accounts:anonymize-due` calls `anonymize_user` and deletes Sanctum tokens. `POST /trust/unpause` clears a pause that is not a deletion or an anonymized account. Export includes profile, consents, devices without push tokens, posts, comments, likes, connections, orders, and closet.
+- `POST /devices` registers an Expo push token. After sign-in the app asks for notification permission and calls that route with `expo-notifications`.
+- Seller onboarding sends the legal name, country, and registration number the person types. The app no longer posts a sample business.
+- Admin is a separate Sanctum guard. `POST /admin/login` requires the admin role, the password, and a TOTP code (or `ADMIN_DEMO_OTP` outside production). The token ability is `admin`. A normal login, even for an admin, only has the `mobile` ability and cannot call admin routes. The panel can schedule and end auctions, block a listing, verify or reject a seller, hide or remove a post or comment, and ban a member. Hidden posts and comments stay out of For You, Following, and hashtag search. A ban revokes tokens and login returns `403 ACCOUNT_BANNED`.
+- Saved cards: `GET /payment-methods` lists brand and last4, `DELETE /payment-methods/{id}` detaches one. With no Stripe secret the app finishes a SetupIntent through `POST /payment-methods/setup/test-card` (Visa 4242, no PAN). With a publishable key, web uses Stripe Elements and native uses the Stripe React Native SDK, then `POST /payment-methods/setup/confirm`.
+- `DemoReelsSeeder` adds four public image reels and hashtags so Reels and Explore are not empty. `DemoAccountsSeeder` adds `buyer@example.com`, `admin@example.com`, and `reels@example.com` only when `APP_ENV=local`. The admin password and TOTP secret are generated at seed time and printed once. The demo password is not seeded in production or in CI.
+
+The Drops, Closet, and Wallet tabs redirect away from fixture money. The product sheet and dupe finder read live offers and related products.
+
+`npm audit` (no `--force`) still reports 14 findings (8 moderate, 6 high). Every remaining fix is a major downgrade: `expo@44` (this app is Expo SDK 57; 44 also pulls an older `zod` and `node-forge`), `@stripe/stripe-react-native@0.18.1` (the app uses 0.64), `expo-router@58`, `nativewind@2` (the screens are NativeWind 4), or `tailwindcss@4` (NativeWind 4.2 requires Tailwind 3). Those upgrades change the SDK or the styling pipeline, so they are not applied. `npm audit fix` without `--force` does not clear them.
+
+Scheduled work (capture, reconcile, anonymize, and the rest) runs from `php artisan schedule:work`, or from the cron in `deploy/crontab`. `deploy/supervisor.conf` also runs `queue:work` for catalog image indexing. The app does not broadcast and the default queue is the database, so Horizon and Reverb are not installed.
 
 ## Hardening pass (2026-10-14)
 
@@ -68,7 +210,7 @@ backend/
 docs/erd.md               Mermaid ERD + money-flow diagram
 ```
 
-## Install into a Laravel 13 app
+## Install into a Laravel 12 app
 
 1. Copy `backend/app`, `backend/config/rewards.php`, `backend/database` and `backend/tests` into the app;
    merge `AppServiceProvider` into yours. Copy `.cursor/` to the repository root.
@@ -116,7 +258,7 @@ docs/erd.md               Mermaid ERD + money-flow diagram
 - Status changes follow `status_transitions` for drops, slots, conversions, orders, items, closet,
   listings, payouts and friendships.
 
-Verified on PostgreSQL 16 with Laravel 13.34: 92 SQL invariant checks, 9 concurrency checks with real
+The lockfile is Laravel 12. Release 1 was verified on PostgreSQL 16: 92 SQL invariant checks, 9 concurrency checks with real
 parallel sessions, 166 end-to-end Eloquent checks (all 155 relationships run lazily and eagerly, all 44
 enum/CHECK pairs, migration down/up), and the 22 shipped tests.
 

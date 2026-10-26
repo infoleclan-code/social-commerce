@@ -31,6 +31,12 @@ interface PaymentGateway
     /** @return array{id: string, customer: string|null, brand: string, last4: string, exp_month: int|null, exp_year: int|null}|null */
     public function paymentMethod(string $paymentMethodId): ?array;
 
+    /** Detach a card from its customer. Already-detached cards are a no-op. */
+    public function detachPaymentMethod(string $paymentMethodId): void;
+
+    /** True only for the local fake gateway. Real Stripe must confirm the card in the app. */
+    public function supportsTestCards(): bool;
+
     public function authorize(AuthorizeRequest $request): PaymentIntentResult;
 
     /** Captures $amountMinor (null = everything authorized). Partial capture releases the rest. */

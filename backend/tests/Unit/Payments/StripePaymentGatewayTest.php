@@ -9,6 +9,7 @@ use App\Services\Payments\PaymentGatewayUnavailable;
 use App\Services\Payments\PaymentOutcomeUnknown;
 use App\Services\Payments\PaymentRejected;
 use App\Services\Payments\StripePaymentGateway;
+use PHPUnit\Framework\Attributes\Group;
 use ReflectionMethod;
 use RuntimeException;
 use Stripe\ApiRequestor;
@@ -20,6 +21,7 @@ use Tests\TestCase;
  * The Stripe gateway through the real stripe-php SDK, with only the HTTP transport faked: what we send
  * (amounts, manual capture, idempotency keys, metadata) and how every class of failure is mapped.
  */
+#[Group('purchases')]
 final class StripePaymentGatewayTest extends TestCase
 {
     private FakeStripeHttpClient $http;

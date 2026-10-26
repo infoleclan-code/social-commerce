@@ -41,6 +41,8 @@ final class HashtagController extends Controller
 
         $page = $this->hashtags->posts($request->user(), $tag, $request->cursor(), $request->limit());
 
+        FeedPostResource::warm($request, $page->posts);
+
         return FeedPostResource::collection($page->posts)
             ->additional(['meta' => ['next_cursor' => $page->nextCursor, 'tag' => $tag]])
             ->response();

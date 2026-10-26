@@ -10,8 +10,8 @@ namespace App\Enums;
  */
 enum RiskStatus: string
 {
-    case Ok         = 'ok';
-    case Review     = 'review';
+    case Ok = 'ok';
+    case Review = 'review';
     case Restricted = 'restricted';
-    case Banned     = 'banned';
+    case Banned = 'banned';
 }

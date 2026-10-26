@@ -11,5 +11,5 @@ namespace App\Enums;
 enum FeedAudience: string
 {
     case Friends = 'friends';
-    case Public  = 'public';
+    case Public = 'public';
 }

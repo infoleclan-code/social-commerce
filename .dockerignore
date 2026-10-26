@@ -1,0 +1,7 @@
+.git
+backend/.env
+backend/vendor
+backend/storage
+backend/.phpunit.cache
+mobile/node_modules
+mobile/.expo

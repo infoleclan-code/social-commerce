@@ -6,6 +6,7 @@ namespace App\Models;
 
 use App\Enums\ConnectionStatus;
 use App\Enums\RiskStatus;
+use App\Enums\UserRole;
 use App\Enums\Visibility;
 use App\Models\Concerns\PostgresModel;
 use Illuminate\Database\Eloquent\Builder;
@@ -49,6 +50,8 @@ class User extends Authenticatable
     /** Public profile only (whitelist, so new columns never leak by default). */
     protected $visible = ['id', 'username', 'display_name', 'avatar_path'];
 
+    protected $hidden = ['password', 'remember_token', 'totp_secret'];
+
     protected function casts(): array
     {
         return [
@@ -57,6 +60,7 @@ class User extends Authenticatable
             'social_feed_enabled' => 'boolean',
             'profile_visibility' => Visibility::class,
             'risk_status' => RiskStatus::class,
+            'role' => UserRole::class,
             'last_active_at' => 'datetime',
             'anonymized_at' => 'datetime',
             'settings' => 'array',

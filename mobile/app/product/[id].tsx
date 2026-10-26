@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 
-import { api, json } from '@/api/client';
+import { ApiError, api, json } from '@/api/client';
+import { purchasesEnabled } from '@/lib/flags';
 import { goBackOrTabs } from '@/lib/go-back';
 import { t } from '@/lib/i18n';
 import { palette } from '@/theme/tokens';
@@ -14,42 +16,65 @@ type Thread = {
   questions: { id: string; body: string; asker: string; answer: { body: string; owner: string; verified_purchase: boolean } | null }[];
 };
 
-export default function ProductScreen() {
+export default function ProductRoute() {
+  if (!purchasesEnabled) {
+    return <Redirect href="/compare" />;
+  }
+
+  return <ProductScreen />;
+}
+
+function ProductScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const [thread, setThread] = useState<Thread | null>(null);
+  const productId = typeof id === 'string' ? id : '';
+  const reviews = useQuery({
+    queryKey: ['product-reviews', productId],
+    queryFn: ({ signal }) => api<{ data: Thread }>(`/products/${encodeURIComponent(productId)}/reviews`, { signal }),
+    enabled: productId !== '',
+  });
   const [review, setReview] = useState('');
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState('');
+  const thread = reviews.data?.data ?? null;
+  const error = reviews.isError ? (reviews.error instanceof ApiError ? reviews.error.message : t('reviews.error')) : null;
 
-  function load() {
-    void api<{ data: Thread }>(`/products/${id}/reviews`).then((body) => setThread(body.data));
+  function reload() {
+    void reviews.refetch();
   }
-
-  useEffect(() => {
-    load();
-  }, [id]);
 
   return (
     <View style={{ flex: 1, backgroundColor: palette.ink, padding: 20, paddingTop: 64, gap: 12 }}>
-      <Pressable onPress={() => goBackOrTabs(router)}><Text style={{ color: palette.ivory }}>{t('shop.close')}</Text></Pressable>
+      <Pressable accessibilityLabel={t('shop.close')} accessibilityRole="button" onPress={() => goBackOrTabs(router)}>
+        <Text style={{ color: palette.ivory }}>{t('shop.close')}</Text>
+      </Pressable>
       <Text style={{ color: palette.ivory, fontSize: 24, fontWeight: '700' }}>{t('reviews.title')}</Text>
-      <Text style={{ color: palette.muted }}>{t('reviews.empty')}</Text>
-      {(thread?.reviews ?? []).map((item) => (
-        <View key={item.body} style={{ gap: 2 }}>
+      {reviews.isPending && productId !== '' ? <Text style={{ color: palette.muted }}>{t('reviews.title')}</Text> : null}
+      {error ? (
+        <View style={{ gap: 8 }}>
+          <Text style={{ color: palette.goldSoft }}>{error}</Text>
+          <Pressable accessibilityLabel={t('reviews.retry')} accessibilityRole="button" onPress={reload} style={button}>
+            <Text style={label}>{t('reviews.retry')}</Text>
+          </Pressable>
+        </View>
+      ) : null}
+      {thread && thread.reviews.length === 0 ? <Text style={{ color: palette.muted }}>{t('reviews.empty')}</Text> : null}
+      {(thread?.reviews ?? []).map((item, index) => (
+        <View key={`${item.author.username}-${index}`} style={{ gap: 2 }}>
           <Text style={{ color: palette.ivory }}>{item.body}</Text>
           <Text style={{ color: palette.goldSoft, fontSize: 12 }}>{t('reviews.verified')} · @{item.author.username}</Text>
         </View>
       ))}
       {thread?.can_review_order_id ? (
         <View style={{ gap: 8 }}>
-          <TextInput value={review} onChangeText={setReview} placeholder={t('reviews.send')} placeholderTextColor={palette.muted} style={field} />
+          <TextInput accessibilityLabel={t('reviews.send')} value={review} onChangeText={setReview} placeholder={t('reviews.send')} placeholderTextColor={palette.muted} style={field} />
           <Pressable
+            accessibilityLabel={t('reviews.send')}
             accessibilityRole="button"
             onPress={() => {
-              void api(`/products/${id}/reviews`, json('POST', { order_id: thread.can_review_order_id, body: review })).then(() => {
+              void api(`/products/${encodeURIComponent(productId)}/reviews`, json('POST', { order_id: thread.can_review_order_id, body: review })).then(() => {
                 setReview('');
-                load();
+                reload();
               });
             }}
             style={button}
@@ -66,13 +91,14 @@ export default function ProductScreen() {
           {item.answer ? <Text style={{ color: palette.goldSoft }}>{item.answer.body} · {t('reviews.verified')}</Text> : null}
           {thread?.can_answer && item.answer === null ? (
             <View style={{ gap: 8 }}>
-              <TextInput value={answer} onChangeText={setAnswer} placeholder={t('reviews.answer')} placeholderTextColor={palette.muted} style={field} />
+              <TextInput accessibilityLabel={t('reviews.answer')} value={answer} onChangeText={setAnswer} placeholder={t('reviews.answer')} placeholderTextColor={palette.muted} style={field} />
               <Pressable
+                accessibilityLabel={t('reviews.answer')}
                 accessibilityRole="button"
                 onPress={() => {
-                  void api(`/questions/${item.id}/answer`, json('POST', { body: answer })).then(() => {
+                  void api(`/questions/${encodeURIComponent(item.id)}/answer`, json('POST', { body: answer })).then(() => {
                     setAnswer('');
-                    load();
+                    reload();
                   });
                 }}
                 style={button}
@@ -83,13 +109,14 @@ export default function ProductScreen() {
           ) : null}
         </View>
       ))}
-      <TextInput value={question} onChangeText={setQuestion} placeholder={t('reviews.ask')} placeholderTextColor={palette.muted} style={field} />
+      <TextInput accessibilityLabel={t('reviews.ask')} value={question} onChangeText={setQuestion} placeholder={t('reviews.ask')} placeholderTextColor={palette.muted} style={field} />
       <Pressable
+        accessibilityLabel={t('reviews.ask')}
         accessibilityRole="button"
         onPress={() => {
-          void api(`/products/${id}/questions`, json('POST', { body: question })).then(() => {
+          void api(`/products/${encodeURIComponent(productId)}/questions`, json('POST', { body: question })).then(() => {
             setQuestion('');
-            load();
+            reload();
           });
         }}
         style={button}

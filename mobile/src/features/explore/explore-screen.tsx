@@ -73,7 +73,7 @@ export function ExploreScreen() {
             <ActivityIndicator color={palette.goldSoft} style={{ marginTop: 32 }} />
           ) : (
             <Text style={{ color: palette.muted, fontSize: 15, textAlign: 'center', marginTop: 32 }}>
-              {searching ? t('explore.noMatch') : t('explore.quiet')}
+              {list.isError ? t('explore.error') : searching ? t('explore.noMatch') : t('explore.quiet')}
             </Text>
           )
         }

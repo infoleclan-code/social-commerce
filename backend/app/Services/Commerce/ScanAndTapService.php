@@ -180,16 +180,20 @@ final class ScanAndTapService
     }
 
     /** @return array<string, mixed> */
-    public function oneTap(User $buyer, string $productId, int $quantity, string $idempotencyKey): array
+    public function oneTap(User $buyer, string $productId, int $quantity, string $idempotencyKey, ?int $expectedTotalMinor = null): array
     {
         $existing = $this->purchases->existing($buyer, $idempotencyKey);
         if ($existing !== null && (string) $existing->product_id !== $productId) {
             throw ApiException::idempotencyConflict();
         }
-        [$order, $step, $replayed] = $this->purchases->place($buyer, $idempotencyKey, 'one_tap', function () use ($productId, $quantity): array {
+        [$order, $step, $replayed] = $this->purchases->place($buyer, $idempotencyKey, 'one_tap', function () use ($buyer, $productId, $quantity, $expectedTotalMinor): array {
             $product = DB::table('products')->where('id', $productId)->lockForUpdate()->first();
             if ($product === null || $product->listing_status !== 'active' || (int) $product->stock < $quantity) {
                 throw ApiException::outOfStock();
+            }
+            $charge = LandedCost::charge($product, $buyer->country_code, (int) $product->price_minor, $quantity);
+            if ($expectedTotalMinor !== null && $expectedTotalMinor !== $charge['total_minor']) {
+                throw ApiException::priceChanged($charge['total_minor'], (string) $product->currency);
             }
             if (DB::update('UPDATE products SET stock = stock - ? WHERE id = ? AND stock >= ?', [$quantity, $productId, $quantity]) !== 1) {
                 throw ApiException::outOfStock();
@@ -200,7 +204,7 @@ final class ScanAndTapService
                 'quantity' => $quantity,
                 'unit_price_minor' => (int) $product->price_minor,
                 'discount_bps' => 0,
-                'total_minor' => (int) $product->price_minor * $quantity,
+                'total_minor' => $charge['total_minor'],
                 'currency' => $product->currency,
             ];
         });
@@ -287,7 +291,23 @@ final class ScanAndTapService
                 'quantity' => (int) $order->quantity,
             ],
             'placed_at' => (string) $order->created_at,
+            'fulfillment' => $order->delivered_at !== null ? 'delivered' : ($order->shipped_at !== null ? 'shipped' : 'preparing'),
+            'carrier' => $order->carrier ?? null,
+            'tracking_number' => $order->tracking_number ?? null,
+            'shipped_at' => $order->shipped_at === null ? null : (string) $order->shipped_at,
         ];
+    }
+
+    /** @return list<array<string, mixed>> */
+    public function listOrders(User $buyer): array
+    {
+        return DB::table('orders')
+            ->where('buyer_id', $buyer->id)
+            ->orderByDesc('created_at')
+            ->limit(30)
+            ->get()
+            ->map(fn (object $order): array => $this->order($order, $this->payments->step((string) $order->id)))
+            ->all();
     }
 
     /** @return array<string, mixed> */

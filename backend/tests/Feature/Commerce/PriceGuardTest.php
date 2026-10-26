@@ -10,11 +10,13 @@ use App\Services\Commerce\PriceGuard;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use PHPUnit\Framework\Attributes\Group;
 use Tests\Support\BuildsCommerce;
 use Tests\Support\BuildsSocial;
 use Tests\TestCase;
 
 /** Price protection pays real, held price drops once, and cannot be farmed. */
+#[Group('purchases')]
 final class PriceGuardTest extends TestCase
 {
     use BuildsCommerce;

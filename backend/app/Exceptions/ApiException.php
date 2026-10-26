@@ -256,4 +256,104 @@ final class ApiException extends RuntimeException
     {
         return new self(404, 'PRODUCT_NOT_FOUND', 'This product does not exist.');
     }
+
+    public static function addressNotFound(): self
+    {
+        return new self(404, 'ADDRESS_NOT_FOUND', 'That shipping address does not exist.');
+    }
+
+    public static function cardDeclined(): self
+    {
+        return new self(402, 'CARD_DECLINED', 'The card was not authorized.');
+    }
+
+    public static function authFailed(): self
+    {
+        return new self(422, 'AUTH_FAILED', 'The email or password is wrong.');
+    }
+
+    public static function adminRequired(): self
+    {
+        return new self(403, 'ADMIN_REQUIRED', 'An admin session is required.');
+    }
+
+    public static function accountBanned(): self
+    {
+        return new self(403, 'ACCOUNT_BANNED', 'This account is banned.');
+    }
+
+    public static function totpInvalid(): self
+    {
+        return new self(422, 'TOTP_INVALID', 'The one-time code is wrong.');
+    }
+
+    public static function auctionClosed(): self
+    {
+        return new self(409, 'AUCTION_CLOSED', 'That auction cannot be changed.');
+    }
+
+    public static function cardNotFound(): self
+    {
+        return new self(404, 'CARD_NOT_FOUND', 'That card is not saved.');
+    }
+
+    public static function testCardUnavailable(): self
+    {
+        return new self(409, 'TEST_CARD_UNAVAILABLE', 'Save the card with Stripe.');
+    }
+
+    public static function friendRequestClosed(): self
+    {
+        return new self(409, 'FRIEND_REQUEST_CLOSED', 'That friend request cannot be changed.');
+    }
+
+    public static function accountUnavailable(): self
+    {
+        return new self(422, 'ACCOUNT_UNAVAILABLE', 'An account with those details is not available.');
+    }
+
+    public static function passwordMismatch(): self
+    {
+        return new self(422, 'PASSWORD_MISMATCH', 'The password does not match.');
+    }
+
+    public static function deviceTokenTaken(): self
+    {
+        return new self(409, 'DEVICE_TOKEN_TAKEN', 'That device is already registered.');
+    }
+
+    public static function compareUnavailable(): self
+    {
+        return new self(503, 'COMPARE_UNAVAILABLE', 'Prices are temporarily unavailable. Nothing older is shown.');
+    }
+
+    public static function offerExpired(): self
+    {
+        return new self(404, 'OFFER_EXPIRED', 'That offer is no longer current. Search again.');
+    }
+
+    public static function wishlistNotFound(): self
+    {
+        return new self(404, 'WISHLIST_NOT_FOUND', 'That saved search does not exist.');
+    }
+
+    public static function assistantUnavailable(): self
+    {
+        return new self(503, 'ASSISTANT_UNAVAILABLE', 'The shopping assistant is unavailable right now.');
+    }
+
+    public static function linkRejected(): self
+    {
+        return new self(422, 'LINK_REJECTED', 'Paste a TikTok, Instagram, or YouTube link.');
+    }
+
+    public static function linkUnavailable(): self
+    {
+        return new self(503, 'LINK_UNAVAILABLE', 'That link did not include a photo we could compare.');
+    }
+
+    public static function listNotFound(): self
+    {
+        return new self(404, 'LIST_NOT_FOUND', 'That shared list was not found.');
+    }
 }

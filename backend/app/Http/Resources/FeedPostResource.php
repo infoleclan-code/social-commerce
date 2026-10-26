@@ -8,6 +8,7 @@ use App\Models\FeedPost;
 use App\Services\Commerce\LandedCost;
 use App\Services\Commerce\PriceGuard;
 use App\Services\Commerce\SyntheticMediaService;
+use App\Support\Currency;
 use App\Support\MediaUrl;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -50,7 +51,7 @@ final class FeedPostResource extends JsonResource
             ],
             'created_at' => $post->created_at?->toIso8601ZuluString('millisecond'),
             'shop' => $this->shop($post, $request),
-            'synthetic' => $this->synthetic($post),
+            'synthetic' => $this->synthetic($post, $request),
         ];
     }
 
@@ -75,16 +76,8 @@ final class FeedPostResource extends JsonResource
                 'image_url' => $product->image_url,
                 'try_on' => (bool) $product->try_on_enabled,
                 'stock' => (int) $product->stock,
-                'price' => [
-                    'amount_minor' => (int) $product->price_minor,
-                    'currency' => $product->currency,
-                    'minor_unit' => 2,
-                ],
-                'squad_price' => [
-                    'amount_minor' => (int) $product->squad_price_minor,
-                    'currency' => $product->currency,
-                    'minor_unit' => 2,
-                ],
+                'price' => Currency::money((int) $product->price_minor, (string) $product->currency),
+                'squad_price' => Currency::money((int) $product->squad_price_minor, (string) $product->currency),
             ],
             'flash' => $drop === null ? null : [
                 'id' => $drop->id,
@@ -92,28 +85,70 @@ final class FeedPostResource extends JsonResource
                 'stock_remaining' => (int) $drop->stock_remaining,
                 'ends_at' => $drop->ends_at?->toIso8601ZuluString('millisecond'),
             ],
-            'drop_hour' => $this->dropHour($product->id, (string) $product->currency),
+            'drop_hour' => $this->dropHour($request, (string) $product->id, (string) $product->currency),
             'landed' => LandedCost::quote($product, $request->user()?->country_code),
         ];
     }
 
-    /** @return array<string, mixed>|null */
-    private function synthetic(FeedPost $post): ?array
+    /**
+     * One query for drop hours and one for synthetic tracks for a page of reels.
+     *
+     * @param  iterable<int, FeedPost>  $posts
+     */
+    public static function warm(Request $request, iterable $posts): void
     {
-        $payload = app(SyntheticMediaService::class)->forPost((string) $post->id);
+        $postIds = [];
+        $productIds = [];
+        foreach ($posts as $post) {
+            $postIds[] = (string) $post->id;
+            $productId = $post->shopTag?->product?->id;
+            if ($productId !== null) {
+                $productIds[] = (string) $productId;
+            }
+        }
+        $hours = [];
+        if ($productIds !== []) {
+            $rows = DB::table('drop_hours')
+                ->whereIn('product_id', $productIds)
+                ->where('starts_at', '<=', now())
+                ->where('ends_at', '>', now())
+                ->orderBy('ends_at')
+                ->get();
+            foreach ($rows as $row) {
+                $hours[(string) $row->product_id] ??= $row;
+            }
+        }
+        $request->attributes->set('feed_drop_hours', $hours);
+        $request->attributes->set('feed_synthetic', app(SyntheticMediaService::class)->forPosts($postIds));
+    }
+
+    /** @return array<string, mixed>|null */
+    private function synthetic(FeedPost $post, Request $request): ?array
+    {
+        $cached = $request->attributes->get('feed_synthetic');
+        if (is_array($cached)) {
+            $payload = $cached[(string) $post->id] ?? ['label' => SyntheticMediaService::LABEL, 'disclosed' => true, 'tracks' => []];
+        } else {
+            $payload = app(SyntheticMediaService::class)->forPost((string) $post->id);
+        }
 
         return $payload['tracks'] === [] ? null : $payload;
     }
 
     /** @return array<string, mixed>|null */
-    private function dropHour(string $productId, string $currency): ?array
+    private function dropHour(Request $request, string $productId, string $currency): ?array
     {
-        $hour = DB::table('drop_hours')
-            ->where('product_id', $productId)
-            ->where('starts_at', '<=', now())
-            ->where('ends_at', '>', now())
-            ->orderBy('ends_at')
-            ->first();
+        $cached = $request->attributes->get('feed_drop_hours');
+        if (is_array($cached)) {
+            $hour = $cached[$productId] ?? null;
+        } else {
+            $hour = DB::table('drop_hours')
+                ->where('product_id', $productId)
+                ->where('starts_at', '<=', now())
+                ->where('ends_at', '>', now())
+                ->orderBy('ends_at')
+                ->first();
+        }
         if ($hour === null) {
             return null;
         }
@@ -122,11 +157,7 @@ final class FeedPostResource extends JsonResource
             'id' => $hour->id,
             'ends_at' => (string) $hour->ends_at,
             'remaining' => (int) $hour->stock - (int) $hour->reserved,
-            'price' => [
-                'amount_minor' => (int) $hour->price_minor,
-                'currency' => $currency,
-                'minor_unit' => 2,
-            ],
+            'price' => Currency::money((int) $hour->price_minor, $currency),
         ];
     }
 }

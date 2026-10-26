@@ -1,4 +1,5 @@
 import { api, json, keyed, query } from '@/api/client';
+import { newIdempotencyKey } from '@/lib/idempotency';
 import type {
   BlindBoxPull,
   CheckoutOrder,
@@ -17,6 +18,7 @@ import type {
   OrderSummary,
   PaymentSetup,
   PaymentSetupConfirmation,
+  SavedCardList,
   ProductOffers,
   RelatedProducts,
   ShareChannel,
@@ -205,8 +207,14 @@ export function fetchRewards(signal?: AbortSignal): Promise<{ coins: number; xp:
   return api<{ data: { coins: number; xp: number; cash: DisplayMoney; coupons: { id: string; label: string; discount_bps: number }[] } }>('/me/rewards', { signal }).then((response) => response.data);
 }
 
+let lootKey: string | null = null;
+
 export function openLootBox(): Promise<{ coupon: { id: string; label: string; discount_bps: number }; coins: number }> {
-  return api<{ data: { coupon: { id: string; label: string; discount_bps: number }; coins: number } }>('/rewards/loot-box', json('POST')).then((response) => response.data);
+  lootKey ??= newIdempotencyKey('loot');
+  return api<{ data: { coupon: { id: string; label: string; discount_bps: number }; coins: number } }>('/rewards/loot-box', keyed(lootKey)).then((response) => {
+    lootKey = null;
+    return response.data;
+  });
 }
 
 export function recordWatch(postId: string, watchedMs: number, durationMs: number): Promise<{ rewarded: boolean }> {
@@ -311,6 +319,7 @@ export type OneTapParams = {
   productId: string;
   variantSku: string | null;
   quantity: number;
+  expectedTotalMinor?: number | null;
 };
 
 /**
@@ -318,7 +327,12 @@ export type OneTapParams = {
  * tap: the server answers a repeat with the order it already created instead of charging twice.
  */
 export async function oneTapCheckout(params: OneTapParams, idempotencyKey: string): Promise<OneTapResponse> {
-  const body = { product_id: params.productId, variant_sku: params.variantSku, quantity: params.quantity };
+  const body = {
+    product_id: params.productId,
+    variant_sku: params.variantSku,
+    quantity: params.quantity,
+    expected_total_minor: params.expectedTotalMinor ?? undefined,
+  };
   return (await api<Envelope<OneTapResponse>>('/checkout/one-tap', json('POST', body, { 'Idempotency-Key': idempotencyKey }))).data;
 }
 
@@ -355,3 +369,147 @@ export async function beginPaymentMethodSetup(idempotencyKey: string): Promise<P
 export async function confirmPaymentMethodSetup(setupIntentId: string, idempotencyKey: string): Promise<PaymentSetupConfirmation> {
   return (await api<Envelope<PaymentSetupConfirmation>>('/payment-methods/confirm', keyed(idempotencyKey, { setup_intent_id: setupIntentId }))).data;
 }
+
+export type SessionUser = { id: string; username: string; display_name: string | null };
+
+export async function registerAccount(body: { email: string; password: string; username: string; display_name: string }): Promise<{ token: string; user: SessionUser }> {
+  return (await api<Envelope<{ token: string; user: SessionUser }>>('/auth/register', json('POST', body))).data;
+}
+
+export async function loginAccount(email: string, password: string): Promise<{ token: string; user: SessionUser }> {
+  return (await api<Envelope<{ token: string; user: SessionUser }>>('/auth/login', json('POST', { email, password }))).data;
+}
+
+export async function logoutAccount(deviceId?: string): Promise<void> {
+  await api('/auth/logout', json('POST', deviceId ? { device_id: deviceId } : {}));
+}
+
+export type CartLine = {
+  product_id: string;
+  title: string;
+  brand?: string | null;
+  image_url?: string | null;
+  quantity: number;
+  stock?: number;
+  available: boolean;
+  price: { amount_minor: number; currency: string; minor_unit: number };
+};
+
+export function fetchCart(signal?: AbortSignal): Promise<CartLine[]> {
+  return api<Envelope<CartLine[]>>('/cart', { signal }).then((body) => body.data);
+}
+
+export function saveCartItem(productId: string, quantity: number): Promise<CartLine[]> {
+  return api<Envelope<CartLine[]>>(`/cart/${encodeURIComponent(productId)}`, json('PUT', { quantity })).then((body) => body.data);
+}
+
+export function removeCartItem(productId: string): Promise<void> {
+  return api<void>(`/cart/${encodeURIComponent(productId)}`, { method: 'DELETE' });
+}
+
+export type ShippingAddress = { id: string; line: string; locality: string; postal_code: string; country: string; is_default: boolean };
+
+export function fetchAddresses(signal?: AbortSignal): Promise<ShippingAddress[]> {
+  return api<Envelope<ShippingAddress[]>>('/addresses', { signal }).then((body) => body.data);
+}
+
+export function saveAddress(body: { line: string; locality: string; postal_code: string; country: string; is_default?: boolean }): Promise<ShippingAddress> {
+  return api<Envelope<ShippingAddress>>('/addresses', json('POST', body)).then((response) => response.data);
+}
+
+export function checkoutCart(addressId: string | null, idempotencyKey: string): Promise<{ orders: { id: string }[] }> {
+  return api<Envelope<{ orders: { id: string }[] }>>('/cart/checkout', keyed(idempotencyKey, { address_id: addressId })).then((body) => body.data);
+}
+
+export function fetchOrders(signal?: AbortSignal): Promise<OrderSummary[]> {
+  return api<Envelope<OrderSummary[]>>('/orders', { signal }).then((body) => body.data);
+}
+
+export function withdrawOrder(orderId: string, idempotencyKey: string): Promise<void> {
+  return api(`/orders/${encodeURIComponent(orderId)}/withdraw`, keyed(idempotencyKey)).then(() => undefined);
+}
+
+export function requestFriend(userId: string): Promise<{ connection: string }> {
+  return api<Envelope<{ connection: string }>>(`/users/${encodeURIComponent(userId)}/friend-request`, json('POST')).then((body) => body.data);
+}
+
+export function acceptFriend(userId: string): Promise<{ connection: string }> {
+  return api<Envelope<{ connection: string }>>(`/users/${encodeURIComponent(userId)}/friend-accept`, json('POST')).then((body) => body.data);
+}
+
+export function blockUser(userId: string): Promise<void> {
+  return api(`/users/${encodeURIComponent(userId)}/block`, json('POST')).then(() => undefined);
+}
+
+export function followUser(userId: string): Promise<{ following: boolean }> {
+  return api<Envelope<{ following: boolean }>>(`/users/${encodeURIComponent(userId)}/follow`, json('POST')).then((body) => body.data);
+}
+
+export function unfollowUser(userId: string): Promise<{ following: boolean }> {
+  return api<Envelope<{ following: boolean }>>(`/users/${encodeURIComponent(userId)}/follow`, { method: 'DELETE' }).then((body) => body.data);
+}
+
+export function registerDevice(body: { platform: 'ios' | 'android' | 'web'; expo_push_token: string }): Promise<{ id: string }> {
+  return api<Envelope<{ id: string }>>('/devices', json('POST', body)).then((response) => response.data);
+}
+
+export function declineFriend(userId: string): Promise<{ connection: string }> {
+  return api<Envelope<{ connection: string }>>(`/users/${encodeURIComponent(userId)}/friend-decline`, json('POST')).then((body) => body.data);
+}
+
+export function fetchSavedCards(signal?: AbortSignal): Promise<SavedCardList> {
+  return api<Envelope<SavedCardList>>('/payment-methods', { signal }).then((body) => body.data);
+}
+
+export function saveTestCard(setupIntentId: string, idempotencyKey: string): Promise<PaymentSetupConfirmation> {
+  return api<Envelope<PaymentSetupConfirmation>>('/payment-methods/setup/test-card', keyed(idempotencyKey, { setup_intent_id: setupIntentId })).then((body) => body.data);
+}
+
+export function removeSavedCard(cardId: string): Promise<void> {
+  return api(`/payment-methods/${encodeURIComponent(cardId)}`, { method: 'DELETE' }).then(() => undefined);
+}
+
+export type AdminSession = { token: string; user: { id: string; username: string; display_name: string | null; role: string } };
+
+export function loginAdmin(email: string, password: string, otp: string): Promise<AdminSession> {
+  return api<Envelope<AdminSession>>('/admin/login', json('POST', { email, password, otp })).then((body) => body.data);
+}
+
+function adminGet<T>(token: string, path: string): Promise<T> {
+  return api<Envelope<T>>(path, {}, { token }).then((body) => body.data);
+}
+
+function adminSend<T>(token: string, path: string, method: 'POST' | 'PATCH', body?: object): Promise<T> {
+  return api<Envelope<T>>(path, json(method, body), { token }).then((response) => response.data);
+}
+
+export type AdminAuction = { id: string; product_id: string; title: string; starts_at: string; ends_at: string; ended: boolean; leader: string | null };
+export type AdminProduct = { id: string; title: string; brand: string; listing_status: string; stock: number };
+export type AdminSeller = { user_id: string; username: string; legal_name: string; status: string; charges_enabled: boolean };
+export type AdminPost = { id: string; username: string; caption: string | null; hidden: boolean };
+export type AdminComment = { id: string; username: string; body: string; hidden: boolean };
+export type AdminUser = { id: string; username: string; display_name: string | null; risk_status: string; role: string };
+
+export const adminApi = {
+  auctions: (token: string) => adminGet<AdminAuction[]>(token, '/admin/auctions'),
+  products: (token: string) => adminGet<AdminProduct[]>(token, '/admin/products'),
+  sellers: (token: string) => adminGet<AdminSeller[]>(token, '/admin/sellers'),
+  posts: (token: string) => adminGet<AdminPost[]>(token, '/admin/posts'),
+  comments: (token: string) => adminGet<AdminComment[]>(token, '/admin/comments'),
+  users: (token: string) => adminGet<AdminUser[]>(token, '/admin/users'),
+  scheduleAuction: (token: string, productId: string) => adminSend<AdminAuction>(token, '/admin/auctions', 'POST', {
+    product_id: productId,
+    start_minor: 1000,
+    starts_at: new Date(Date.now() - 60_000).toISOString(),
+    ends_at: new Date(Date.now() + 3_600_000).toISOString(),
+  }),
+  endAuction: (token: string, auctionId: string) => adminSend<AdminAuction>(token, `/admin/auctions/${auctionId}/end`, 'POST', {}),
+  blockProduct: (token: string, productId: string) => adminSend<AdminProduct>(token, `/admin/products/${productId}`, 'PATCH', { listing_status: 'blocked' }),
+  verifySeller: (token: string, userId: string) => adminSend<{ status: string }>(token, `/admin/sellers/${userId}/verify`, 'POST', {}),
+  hidePost: (token: string, postId: string) => adminSend<{ hidden: boolean }>(token, `/admin/posts/${postId}/hide`, 'POST', {}),
+  unhidePost: (token: string, postId: string) => adminSend<{ hidden: boolean }>(token, `/admin/posts/${postId}/unhide`, 'POST', {}),
+  removeComment: (token: string, commentId: string) => api(`/admin/comments/${commentId}`, { method: 'DELETE' }, { token }).then(() => undefined),
+  banUser: (token: string, userId: string) => adminSend<{ banned: boolean }>(token, `/admin/users/${userId}/ban`, 'POST', {}),
+  setStore: (token: string, host: string, status: 'open' | 'flagged' | 'blocked') => adminSend<{ host: string; status: string }>(token, '/admin/stores', 'POST', { host, status }),
+  addCoupon: (token: string, host: string, code: string, label: string) => adminSend<{ id: string }>(token, '/admin/coupons', 'POST', { host, code, label }),
+};

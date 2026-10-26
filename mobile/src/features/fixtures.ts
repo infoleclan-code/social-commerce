@@ -34,13 +34,13 @@ export const previewActivity = [
     kind: 'pending',
     on: '2026-10-01',
   },
-] as const satisfies ReadonlyArray<{
+] as const satisfies readonly {
   id: string;
   titleKey: 'wallet.txCoat' | 'wallet.txLoafer' | 'wallet.txSlip';
   amount: DisplayMoney;
   kind: 'available' | 'pending';
   on: string;
-}>;
+}[];
 
 export const previewDrops = [
   { id: 'coat', title: 'Wool coat', detail: 'Charcoal', purchased: 18, goal: 30 },

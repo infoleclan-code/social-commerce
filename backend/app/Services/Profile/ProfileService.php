@@ -6,12 +6,14 @@ namespace App\Services\Profile;
 
 use App\Enums\ConnectionStatus;
 use App\Enums\FeedPostKind;
+use App\Enums\Visibility;
 use App\Exceptions\ApiException;
 use App\Models\FeedPost;
 use App\Models\SocialConnection;
 use App\Models\User;
 use App\Services\Feed\FeedCursor;
 use App\Services\Feed\FeedPage;
+use App\Services\Social\SocialGraphService;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
@@ -25,11 +27,14 @@ final readonly class ProfileService
     public function show(User $viewer, string $userId): User
     {
         $user = $this->visibleUser($viewer, $userId);
+        $social = app(SocialGraphService::class);
         $user->setAttribute('posts_count', $this->visiblePosts($viewer, $user)->count());
-        $user->setAttribute('followers_count', $user->friends()->count());
-        $user->setAttribute('following_count', $user->followers_count);
+        $user->setAttribute('followers_count', $social->followerCount($user));
+        $user->setAttribute('following_count', $social->followingCount($user));
         $user->setAttribute('is_self', $user->is($viewer));
         $user->setAttribute('is_friend', ! $user->is_self && $this->isFriend($viewer, $user));
+        $user->setAttribute('is_following', $social->follows($viewer, $user));
+        $user->setAttribute('connection', $social->label($viewer, $user));
 
         return $user;
     }
@@ -75,11 +80,25 @@ final readonly class ProfileService
         }
 
         $user = User::query()->whereKey($userId)->first();
-        if ($user === null || $this->blocked($viewer, $user)) {
+        if ($user === null || $this->blocked($viewer, $user) || ! $this->profileVisible($viewer, $user)) {
             throw ApiException::profileNotFound();
         }
 
         return $user;
+    }
+
+    private function profileVisible(User $viewer, User $user): bool
+    {
+        if ($viewer->is($user)) {
+            return true;
+        }
+        $visibility = $user->profile_visibility instanceof Visibility ? $user->profile_visibility : Visibility::Private;
+
+        return match ($visibility) {
+            Visibility::Public => true,
+            Visibility::Friends => $this->isFriend($viewer, $user),
+            Visibility::Private => false,
+        };
     }
 
     /** @return Builder<FeedPost> */

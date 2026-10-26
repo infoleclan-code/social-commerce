@@ -11,8 +11,8 @@ use App\Services\Commerce\RewardService;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\QueryException;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Comments on posts the viewer can see. Threads are one level deep: top-level comments oldest first,
@@ -34,6 +34,7 @@ final readonly class CommentService
 
         $comments = FeedPostComment::query()
             ->where('post_id', $post->id)
+            ->whereNull('hidden_at')
             ->when($parentId === null, fn (Builder $top) => $top->whereNull('parent_id'), fn (Builder $replies) => $replies->where('parent_id', $parentId))
             ->whereNotIn('user_id', function ($blocked) use ($viewer): void {
                 $id = $viewer->getKey();
