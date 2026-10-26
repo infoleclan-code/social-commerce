@@ -187,6 +187,15 @@ final class CompareGuideTest extends TestCase
         $this->assertSame('first_click', $summary['badges'][0]['id']);
     }
 
+    public function test_a_narrower_search_does_not_erase_the_top_three_savings_gap(): void
+    {
+        Sanctum::actingAs($this->makeUser());
+        $offerId = (string) $this->getJson('/api/v1/compare?q=nike%20sneakers')->json('data.products.0.offers.0.id');
+        $this->postJson('/api/v1/assistant', ['message' => 'running shoes under $106'])->assertOk();
+        $this->postJson('/api/v1/compare/clicks', ['offer_id' => $offerId])->assertOk();
+        $this->assertSame(1300, $this->getJson('/api/v1/savings')->json('data.saved_minor'));
+    }
+
     private function observe(string $key, int $daysAgo, int $total): void
     {
         DB::table('price_observations')->insert([

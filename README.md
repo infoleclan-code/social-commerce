@@ -84,7 +84,7 @@ Sanctum token. On a product page it asks the API whether another store is cheape
 SerpAPI shopping and immersive results often omit tax and the countries a store ships to. Those stay
 unknown and are labeled. Google Lens needs `SERPAPI_API_KEY`. Currencies beyond the static fallback
 appear after `fx:refresh` succeeds. The owner must supply, when they want live prices, photos, and
-mail: `SERPAPI_API_KEY`, `FX_FEED_URL` (optional; a default is set), `AFFILIATE_QUERY_PARAM`,
+mail: `SERPAPI_API_KEY`, `FX_FEED_URL` (optional; a default is set), `LLM_PROVIDER` (`fake` by default; `http` needs `LLM_API_KEY`, `LLM_MODEL`, and `LLM_API_URL`), `AFFILIATE_QUERY_PARAM`,
 `AFFILIATE_ID`, `SENTRY_LARAVEL_DSN`, and the `MAIL_*` SMTP settings.
 
 ## Launch

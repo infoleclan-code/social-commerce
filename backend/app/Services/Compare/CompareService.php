@@ -175,6 +175,9 @@ final class CompareService
                 $highest = max($highest, (int) $offer['total_minor']);
             }
             foreach ($product['offers'] as &$offer) {
+                // The id is the snapshot the shopper is looking at. A later search
+                // that hides the dearer stores must not reuse it.
+                $offer['id'] = substr(hash('sha256', $offer['id'].'|'.$offer['currency'].'|'.$highest), 0, 24);
                 $offer['highest_minor'] = $highest;
                 $this->publish($offer);
                 unset($offer['rank'], $offer['url']);
