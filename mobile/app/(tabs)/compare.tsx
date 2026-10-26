@@ -18,6 +18,7 @@ import {
   searchCompare,
   type CompareOffer,
 } from '@/api/compare';
+import { fetchAlternatives, fetchForecast, searchLink } from '@/api/discover';
 import { registerPushDevice } from '@/features/auth/register-push';
 import { PriceChart } from '@/features/compare/PriceChart';
 import { t } from '@/lib/i18n';
@@ -37,6 +38,7 @@ export default function CompareScreen() {
   const [min, setMin] = useState('');
   const [max, setMax] = useState('');
   const [target, setTarget] = useState('');
+  const [link, setLink] = useState('');
   const [inStock, setInStock] = useState(true);
   const [sort, setSort] = useState('total_asc');
   const [note, setNote] = useState<string | null>(null);
@@ -118,6 +120,27 @@ export default function CompareScreen() {
     }
   }
 
+  async function fromLink() {
+    setNote(null);
+    try {
+      const found = await searchLink(link.trim(), currency, country);
+      const detected = found.data.detected_query ?? found.data.query;
+      setNote(t('guide.linkMatched', { query: detected }));
+      setText(detected);
+      setSubmitted(detected);
+    } catch (error) {
+      if (error instanceof ApiError && error.code === 'LINK_REJECTED') {
+        setNote(t('guide.linkRejected'));
+        return;
+      }
+      if (error instanceof ApiError && error.code === 'LINK_UNAVAILABLE') {
+        setNote(t('guide.linkFailed'));
+        return;
+      }
+      setNote(problem(error));
+    }
+  }
+
   async function photo() {
     setNote(null);
     try {
@@ -188,6 +211,24 @@ export default function CompareScreen() {
           <Text style={pillText}>{t('compare.photo')}</Text>
         </Pressable>
       </View>
+      <TextInput accessibilityLabel={t('guide.link')} autoCapitalize="none" onChangeText={setLink} placeholder="https://www.youtube.com/watch?v=…" placeholderTextColor={palette.faint} style={field} value={link} />
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        <Pressable accessibilityRole="button" onPress={() => void fromLink()} style={pill}>
+          <Text style={pillText}>{t('guide.linkAction')}</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" onPress={() => router.push('/assistant')} style={pill}>
+          <Text style={pillText}>{t('guide.assistant')}</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" onPress={() => router.push('/lists')} style={pill}>
+          <Text style={pillText}>{t('guide.lists')}</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" onPress={() => router.push('/try-on')} style={pill}>
+          <Text style={pillText}>{t('guide.tryOn')}</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" onPress={() => router.push('/savings')} style={pill}>
+          <Text style={pillText}>{t('guide.savings')}</Text>
+        </Pressable>
+      </View>
       {results.isFetching ? <Text style={{ color: palette.muted }}>{t('compare.loading')}</Text> : null}
       {results.isError ? <Text style={{ color: palette.goldSoft }}>{problem(results.error)}</Text> : null}
       {products.map((product, index) => {
@@ -200,6 +241,7 @@ export default function CompareScreen() {
             {history?.low_30_minor !== null && history?.low_30_minor !== undefined ? (
               <Text style={{ color: palette.muted }}>{t('compare.chartLow', { amount: money(history.low_30_minor, history.currency, history.minor_unit) })}</Text>
             ) : null}
+            <ForecastNote brand={product.brand} currency={currency} current={product.offers[0]?.total_minor} model={product.model} size={product.size} />
             {product.offers.map((offer, offerIndex) => (
               <View key={offer.id} style={{ gap: 4, padding: 12, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.06)' }}>
                 <Text style={{ color: palette.goldSoft, fontWeight: '700' }}>{offerIndex === 0 ? t('compare.best') : t('compare.offer')} · {offer.store}</Text>
@@ -236,6 +278,9 @@ export default function CompareScreen() {
         );
       })}
       {submitted.trim().length >= 2 && products.length === 0 && results.isSuccess ? <Text style={{ color: palette.muted }}>{t('compare.empty')}</Text> : null}
+      {submitted.trim().length >= 2 ? (
+        <AlternativesNote country={country} currency={currency} onPick={(query) => { setText(query); setSubmitted(query); }} query={submitted.trim()} />
+      ) : null}
       <Text style={{ color: palette.ivory, fontSize: 18, fontWeight: '700' }}>{t('compare.wishlist')}</Text>
       {(saved.data?.data ?? []).map((item) => (
         <View key={item.id} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
@@ -251,6 +296,75 @@ export default function CompareScreen() {
       </Pressable>
       {note ? <Text style={{ color: palette.goldSoft }}>{note}</Text> : null}
     </ScrollView>
+  );
+}
+
+function ForecastNote({
+  brand,
+  model,
+  size,
+  currency,
+  current,
+}: {
+  brand: string;
+  model: string;
+  size: string | null;
+  currency: string;
+  current?: number;
+}) {
+  const forecast = useQuery({
+    queryKey: ['forecast', brand, model, size ?? '', currency, current ?? null],
+    queryFn: () => fetchForecast({ brand, model, size, currency, current_minor: current }),
+  });
+  const data = forecast.data?.data;
+  if (!data) {
+    return null;
+  }
+  const amount = formatMoney({ amount_minor: data.expected_drop_minor, currency: data.currency, minor_unit: data.minor_unit });
+  return (
+    <View style={{ gap: 4 }}>
+      <Text style={{ color: palette.goldSoft, fontWeight: '700' }}>{data.action === 'wait' ? t('guide.forecastWait') : t('guide.forecastBuy')}</Text>
+      <Text style={{ color: palette.muted }}>
+        {data.expected_drop_minor > 0
+          ? t('guide.forecastDrop', { amount, percent: String(data.expected_drop_percent), event: data.next_event.name })
+          : t('guide.forecastNone')}
+      </Text>
+      <Text style={{ color: palette.muted }}>{t('guide.confidence', { level: data.confidence })}</Text>
+      <Text style={{ color: palette.muted }}>{data.disclaimer}</Text>
+    </View>
+  );
+}
+
+function AlternativesNote({
+  query,
+  currency,
+  country,
+  onPick,
+}: {
+  query: string;
+  currency: string;
+  country: string;
+  onPick: (query: string) => void;
+}) {
+  const alts = useQuery({
+    queryKey: ['alternatives', query, currency, country],
+    enabled: query.length >= 2,
+    queryFn: () => fetchAlternatives(query, currency, country),
+  });
+  const rows = alts.data?.data.alternatives ?? [];
+  if (rows.length === 0) {
+    return null;
+  }
+  return (
+    <View style={{ gap: 6 }}>
+      <Text style={{ color: palette.ivory, fontWeight: '700' }}>{t('guide.alternatives')}</Text>
+      {rows.map((row) => (
+        <Pressable accessibilityRole="button" key={row.query} onPress={() => onPick(row.query)}>
+          <Text style={{ color: palette.goldSoft }}>{row.title} · {row.savings_percent}%</Text>
+          <Text style={{ color: palette.muted }}>{row.quality_note}</Text>
+        </Pressable>
+      ))}
+    </View>
   );
 }
 

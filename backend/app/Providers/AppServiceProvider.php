@@ -5,6 +5,10 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Models\User;
+use App\Services\Assistant\FakeLlmClient;
+use App\Services\Assistant\HttpLlmClient;
+use App\Services\Assistant\LlmClient;
+use App\Services\Assistant\UnavailableLlmClient;
 use App\Services\Compare\FakeOfferProvider;
 use App\Services\Compare\OfferProvider;
 use App\Services\Compare\SerpApiShoppingProvider;
@@ -80,6 +84,16 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(ImageFetcher::class, fn (Application $app): ImageFetcher => $app->environment('testing')
             ? new FakeImageFetcher
             : new SafeImageFetcher);
+        $this->app->singleton(LlmClient::class, function (): LlmClient {
+            if ((string) config('llm.provider') !== 'http') {
+                return new FakeLlmClient;
+            }
+            $key = (string) config('llm.api_key');
+
+            return $key === ''
+                ? new UnavailableLlmClient
+                : new HttpLlmClient($key, (string) config('llm.url'), (string) config('llm.model'));
+        });
         $this->app->singleton(OfferProvider::class, function (): OfferProvider {
             if ((string) config('compare.provider') === 'serpapi') {
                 $key = (string) config('compare.serpapi_key');
@@ -147,6 +161,7 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('export', fn (Request $request) => Limit::perHour(3)->by('export:'.$key($request))->response($limited));
         RateLimiter::for('delete-account', fn (Request $request) => Limit::perHour(3)->by('delete:'.$key($request))->response($limited));
         RateLimiter::for('compare', fn (Request $request) => Limit::perMinute(30)->by('compare:'.$key($request))->response($limited));
+        RateLimiter::for('assistant', fn (Request $request) => Limit::perMinute(8)->by('assistant:'.$key($request))->response($limited));
         RateLimiter::for('social', fn (Request $request) => Limit::perMinute(30)->by($key($request))->response($limited));
     }
 

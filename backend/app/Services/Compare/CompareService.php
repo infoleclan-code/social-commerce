@@ -25,6 +25,7 @@ final class CompareService
         private readonly StoreDirectory $stores,
         private readonly CouponCatalog $coupons,
         private readonly PriceHistory $history,
+        private readonly SavingsTracker $savings,
     ) {}
 
     /**
@@ -75,6 +76,7 @@ final class CompareService
             'offer_key' => $offerId,
             'created_at' => now(),
         ]);
+        $this->savings->record($user, $offer);
 
         return ['url' => $url];
     }
@@ -168,7 +170,12 @@ final class CompareService
 
         $products = array_slice($products, 0, 4);
         foreach ($products as &$product) {
+            $highest = 0;
+            foreach ($product['offers'] as $offer) {
+                $highest = max($highest, (int) $offer['total_minor']);
+            }
             foreach ($product['offers'] as &$offer) {
+                $offer['highest_minor'] = $highest;
                 $this->publish($offer);
                 unset($offer['rank'], $offer['url']);
             }
@@ -352,6 +359,10 @@ final class CompareService
         Cache::put($this->offerCacheKey((string) $offer['id']), [
             'store' => $offer['store'],
             'url' => $offer['url'],
+            'price_minor' => (int) $offer['total_minor'],
+            'highest_minor' => (int) ($offer['highest_minor'] ?? $offer['total_minor']),
+            'currency' => (string) $offer['currency'],
+            'offer_key' => (string) $offer['id'],
         ], max(30, (int) config('compare.cache_ttl', 600)));
     }
 

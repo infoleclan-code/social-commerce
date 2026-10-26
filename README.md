@@ -64,6 +64,20 @@ with at least 100 reviews is labeled trusted. Admins flag or block a host with `
 (`open`, `flagged`, or `blocked`). A blocked host is left out of results and its link is refused.
 `POST /api/v1/admin/coupons` adds a code for a store host; matching offers include it.
 
+`POST /api/v1/assistant` sends a plain-language request to `LLM_PROVIDER`. `fake` (the default) returns a fixed note and then the normal top-3 search. `http` calls an OpenAI-compatible chat endpoint with `LLM_API_KEY`, `LLM_MODEL`, and `LLM_API_URL`. An empty key returns 503 and does not fall back to the fake note. The route is limited to 8 requests a minute.
+
+`GET /api/v1/compare/forecast` estimates buy-now or wait from the price history and a typical sale calendar (Black Friday, Prime Day, Singles’ Day, and others). The response is labeled as an estimate.
+
+`POST /api/v1/compare/link` accepts a TikTok, Instagram, or YouTube https URL, reads the page thumbnail (`og:image`), and runs the same photo search. It does not download the video. A rejected host is 422. A missing thumbnail is 503.
+
+`GET /api/v1/compare/try-on?category=shoes` describes a camera guide for shoes and glasses. Other categories get a still preview. It is not a body scan.
+
+`GET /api/v1/compare/alternatives` suggests another brand in the same kind of search when that option is cheaper, with the percent saved.
+
+Shared lists (`/api/v1/shared-lists`) can be joined with a token, voted on, and used to tally pledges. Pledges are not payments.
+
+`GET /api/v1/savings` totals the gap between the offer someone opened and the highest offer in that top 3, plus a few badges.
+
 `extension/` is a Manifest V3 Chrome and Firefox extension. The popup stores the API base URL and a
 Sanctum token. On a product page it asks the API whether another store is cheaper.
 

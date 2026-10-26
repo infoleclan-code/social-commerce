@@ -202,6 +202,10 @@ export default function RootLayout() {
             <Stack.Screen name="sell" />
             <Stack.Screen name="product/[id]" />
             <Stack.Screen name="orders" />
+            <Stack.Screen name="assistant" />
+            <Stack.Screen name="lists" />
+            <Stack.Screen name="try-on" />
+            <Stack.Screen name="savings" />
           </Stack>
           </SessionGate>
           <SheetNavigationReset />

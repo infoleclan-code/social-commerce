@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ApiError, api, json } from '@/api/client';
 import type { FeedPost, StoreProduct, UserProfile } from '@/api/contracts';
+import { fetchSavings } from '@/api/discover';
 import { queryKeys } from '@/api/keys';
 import { acceptFriend, blockUser, declineFriend, fetchCloset, fetchLedger, fetchProfile, fetchRewards, fetchRitual, fetchStore, fetchUserPosts, followUser, logoutAccount, requestFriend, unfollowUser, checkIn, completeMission, listClosetItem, openLootBox, spinPrize, type ClosetRow, type Ritual } from '@/api/social-commerce';
 import { useSession } from '@/stores/session';
@@ -485,16 +486,39 @@ function AccountActions({
   onLogout: () => void;
   onOrders: () => void;
 }) {
+  const router = useRouter();
+  const savings = useQuery({ queryKey: ['savings'], queryFn: fetchSavings });
   const [logoutArmed, setLogoutArmed] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [password, setPassword] = useState('');
   const [note, setNote] = useState<string | null>(null);
+  const saved = savings.data?.data;
 
   return (
     <View style={{ gap: 8, marginTop: 8 }}>
+      {saved ? (
+        <Text style={{ color: palette.ivory }}>
+          {t('guide.savedTotal', {
+            amount: formatMoney({ amount_minor: saved.saved_minor, currency: saved.currency, minor_unit: saved.minor_unit }),
+            clicks: String(saved.clicks),
+          })}
+        </Text>
+      ) : null}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         <Pressable accessibilityRole="button" onPress={onCompare} style={pill}>
           <Text style={pillText}>{t('compare.prices')}</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" onPress={() => router.push('/assistant')} style={pill}>
+          <Text style={pillText}>{t('guide.assistant')}</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" onPress={() => router.push('/lists')} style={pill}>
+          <Text style={pillText}>{t('guide.lists')}</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" onPress={() => router.push('/try-on')} style={pill}>
+          <Text style={pillText}>{t('guide.tryOn')}</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" onPress={() => router.push('/savings')} style={pill}>
+          <Text style={pillText}>{t('guide.savings')}</Text>
         </Pressable>
         {purchasesEnabled ? (
           <>
