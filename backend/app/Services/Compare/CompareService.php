@@ -14,25 +14,38 @@ use Throwable;
 
 /**
  * Ranks a provider result into product groups and keeps at most three in-stock
- * offers from different stores. Expired cache is never returned. A provider
- * failure is a 503, including when an older payload is still sitting in cache.
+ * offers from different stores. The rank is the landed total of the parts the
+ * store published (item, shipping, tax). Expired cache is never returned.
  */
 final class CompareService
 {
-    public function __construct(private readonly OfferProvider $provider) {}
+    public function __construct(
+        private readonly OfferProvider $provider,
+        private readonly FxRates $fx,
+        private readonly StoreDirectory $stores,
+        private readonly CouponCatalog $coupons,
+        private readonly PriceHistory $history,
+    ) {}
 
     /**
-     * @param  array{brand?: string|null, size?: string|null, min_minor?: int|null, max_minor?: int|null, in_stock: bool, sort: string, currency: string}  $filters
+     * @param  array{brand?: string|null, size?: string|null, min_minor?: int|null, max_minor?: int|null, in_stock: bool, sort: string, currency: string, country?: string|null}  $filters
      * @return array<string, mixed>
      */
     public function search(string $query, array $filters): array
     {
-        return $this->present($query, $this->fresh($query), $filters);
+        $country = Region::country($filters['country'] ?? null) ?? 'US';
+        $filters['country'] = $country;
+        $result = $this->present($query, $this->fresh($query, $country), $filters);
+        $this->history->rememberSearch($query, $country, $filters['currency']);
+
+        return $result;
     }
 
-    public function cacheKey(string $query): string
+    public function cacheKey(string $query, string $country = 'US'): string
     {
-        return 'compare:'.hash('sha256', mb_strtolower(trim($query)).'|'.(string) config('compare.provider'));
+        $country = Region::country($country) ?? 'US';
+
+        return 'compare:'.hash('sha256', mb_strtolower(trim($query)).'|'.$country.'|'.(string) config('compare.provider'));
     }
 
     /** @return array{url: string} */
@@ -48,8 +61,9 @@ final class CompareService
             throw ApiException::offerExpired();
         }
         $url = $this->affiliate($merchant);
-        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
-        if ($host === '') {
+        $recordedHost = strtolower((string) parse_url($url, PHP_URL_HOST));
+        $host = $this->stores->host($url);
+        if ($recordedHost === '' || $host === '' || $this->stores->blocked($host)) {
             throw ApiException::offerExpired();
         }
 
@@ -57,7 +71,7 @@ final class CompareService
             'id' => (string) Str::uuid7(),
             'user_id' => $user->id,
             'store' => mb_substr((string) ($offer['store'] ?? 'Store'), 0, 120),
-            'host' => mb_substr($host, 0, 190),
+            'host' => mb_substr($recordedHost, 0, 190),
             'offer_key' => $offerId,
             'created_at' => now(),
         ]);
@@ -66,10 +80,10 @@ final class CompareService
     }
 
     /** @return array{checked_at: int, offers: list<array<string, mixed>>} */
-    private function fresh(string $query): array
+    private function fresh(string $query, string $country): array
     {
         $ttl = max(30, (int) config('compare.cache_ttl', 600));
-        $cached = Cache::get($this->cacheKey($query));
+        $cached = Cache::get($this->cacheKey($query, $country));
         if (
             is_array($cached)
             && isset($cached['checked_at'], $cached['offers'])
@@ -80,34 +94,39 @@ final class CompareService
         }
 
         try {
-            $offers = $this->provider->search($query);
+            $offers = $this->provider->search($query, [
+                'country' => $country,
+                'gl' => Region::gl($country),
+                'hl' => Region::hl($country),
+            ]);
         } catch (Throwable $exception) {
             report(new RuntimeException('Offer provider failed: '.$exception::class));
             throw ApiException::compareUnavailable();
         }
 
         $payload = ['checked_at' => time(), 'offers' => array_values($offers)];
-        Cache::put($this->cacheKey($query), $payload, $ttl);
+        Cache::put($this->cacheKey($query, $country), $payload, $ttl);
 
         return $payload;
     }
 
     /**
      * @param  array{checked_at: int, offers: list<array<string, mixed>>}  $payload
-     * @param  array{brand?: string|null, size?: string|null, min_minor?: int|null, max_minor?: int|null, in_stock: bool, sort: string, currency: string}  $filters
+     * @param  array{brand?: string|null, size?: string|null, min_minor?: int|null, max_minor?: int|null, in_stock: bool, sort: string, currency: string, country?: string|null}  $filters
      * @return array<string, mixed>
      */
     private function present(string $query, array $payload, array $filters): array
     {
         $checkedAt = gmdate('c', $payload['checked_at']);
         $currency = $filters['currency'];
+        $country = Region::country($filters['country'] ?? null) ?? 'US';
         $groups = [];
 
         foreach ($payload['offers'] as $raw) {
             if (! is_array($raw)) {
                 continue;
             }
-            $offer = $this->normalize($raw, $currency, $checkedAt);
+            $offer = $this->normalize($raw, $currency, $country, $checkedAt);
             if ($offer === null || ! $this->passes($offer, $filters)) {
                 continue;
             }
@@ -121,6 +140,9 @@ final class CompareService
             $unavailable = array_values(array_filter($offers, fn (array $offer): bool => $offer['availability'] !== 'in_stock'));
             $current = $this->sortOffers($current, $filters['sort']);
             $current = $this->distinctStores($current);
+            foreach ($current as $offer) {
+                $this->history->record($query, $offer);
+            }
             $product = [
                 'brand' => $offers[0]['brand'],
                 'model' => $offers[0]['model'],
@@ -161,41 +183,65 @@ final class CompareService
         return [
             'query' => $query,
             'currency' => $currency,
+            'minor_unit' => $this->fx->exponent($currency),
+            'country' => $country,
             'checked_at' => $checkedAt,
             'products' => $products,
         ];
     }
 
     /** @param  array<string, mixed>  $raw */
-    private function normalize(array $raw, string $currency, string $checkedAt): ?array
+    private function normalize(array $raw, string $currency, string $country, string $checkedAt): ?array
     {
         $url = StoreUrl::merchant((string) ($raw['url'] ?? ''));
         $store = trim((string) ($raw['store'] ?? ''));
         if ($store === '' || $url === null || ! is_numeric($raw['price_minor'] ?? null)) {
             return null;
         }
+        $host = $this->stores->host($url);
+        if ($host === '' || $this->stores->blocked($host)) {
+            return null;
+        }
 
         $from = strtoupper((string) ($raw['currency'] ?? 'USD'));
-        $price = $this->convert((int) $raw['price_minor'], $from, $currency);
+        $price = $this->fx->convert((int) $raw['price_minor'], $from, $currency);
         if ($price === null) {
             return null;
         }
-        $known = (bool) ($raw['shipping_known'] ?? false);
+        $shippingKnown = (bool) ($raw['shipping_known'] ?? false);
         $shipping = null;
-        if ($known && is_numeric($raw['shipping_minor'] ?? null)) {
-            $shipping = $this->convert((int) $raw['shipping_minor'], $from, $currency);
+        if ($shippingKnown && is_numeric($raw['shipping_minor'] ?? null)) {
+            $shipping = $this->fx->convert((int) $raw['shipping_minor'], $from, $currency);
             if ($shipping === null) {
                 return null;
             }
         }
-        $total = $known && $shipping !== null ? $price + $shipping : $price;
+        $taxKnown = (bool) ($raw['tax_known'] ?? false);
+        $taxIncluded = (bool) ($raw['tax_included'] ?? false);
+        $tax = null;
+        if ($taxKnown && is_numeric($raw['tax_minor'] ?? null)) {
+            $tax = $this->fx->convert((int) $raw['tax_minor'], $from, $currency);
+            if ($tax === null) {
+                return null;
+            }
+        }
+        $total = $price + ($shippingKnown && $shipping !== null ? $shipping : 0);
+        if ($taxKnown && $tax !== null && ! $taxIncluded) {
+            $total += $tax;
+        }
         $id = substr(hash('sha256', implode('|', [
             strtolower($store),
             $url,
             (string) $raw['price_minor'],
             (string) ($raw['shipping_minor'] ?? ''),
+            (string) ($raw['tax_minor'] ?? ''),
             (string) ($raw['availability'] ?? ''),
         ])), 0, 24);
+        $ships = $this->shipsTo($raw['ships_to'] ?? null, $country);
+        $trust = $this->stores->describe($host, [
+            'rating' => is_numeric($raw['rating'] ?? null) ? (float) $raw['rating'] : null,
+            'review_count' => is_numeric($raw['review_count'] ?? null) ? (int) $raw['review_count'] : null,
+        ]);
 
         return [
             'id' => $id,
@@ -206,15 +252,34 @@ final class CompareService
             'size' => isset($raw['size']) && $raw['size'] !== null && $raw['size'] !== '' ? mb_substr((string) $raw['size'], 0, 40) : null,
             'price_minor' => $price,
             'shipping_minor' => $shipping,
-            'shipping_known' => $known,
+            'shipping_known' => $shippingKnown,
+            'tax_minor' => $tax,
+            'tax_known' => $taxKnown,
+            'tax_included' => $taxIncluded,
             'total_minor' => $total,
-            'total_known' => $known,
+            'total_known' => $shippingKnown && $taxKnown,
             'currency' => $currency,
             'availability' => ($raw['availability'] ?? '') === 'out_of_stock' ? 'out_of_stock' : 'in_stock',
             'checked_at' => $checkedAt,
             'url' => $url,
-            'rank' => $known ? $total : $price,
+            'host' => $host,
+            'rating' => $trust['rating'],
+            'review_count' => $trust['review_count'],
+            'trust' => $trust['trust'],
+            'ships_to_user' => $ships,
+            'coupons' => $this->coupons->forHost($host, $country),
+            'rank' => $total,
         ];
+    }
+
+    private function shipsTo(mixed $ships, string $country): ?bool
+    {
+        if (! is_array($ships)) {
+            return null;
+        }
+        $codes = array_map(fn (mixed $code): string => strtoupper((string) $code), $ships);
+
+        return in_array($country, $codes, true);
     }
 
     /** @param  array<string, mixed>  $offer */
@@ -231,7 +296,7 @@ final class CompareService
         if ($size !== '' && strtolower((string) ($offer['size'] ?? '')) !== $size) {
             return false;
         }
-        $amount = $offer['shipping_known'] ? $offer['total_minor'] : $offer['price_minor'];
+        $amount = $offer['rank'];
         if (isset($filters['min_minor']) && $filters['min_minor'] !== null && $amount < $filters['min_minor']) {
             return false;
         }
@@ -304,21 +369,5 @@ final class CompareService
         }
 
         return $url.(str_contains($url, '?') ? '&' : '?').rawurlencode($param).'='.rawurlencode($id);
-    }
-
-    /** Null when the pair is not in the rate table, so the amount is not relabeled. */
-    private function convert(int $minor, string $from, string $to): ?int
-    {
-        if ($from === $to) {
-            return $minor;
-        }
-        $rates = config('compare.rates');
-        if (! is_array($rates) || ! isset($rates[$from], $rates[$to])) {
-            return null;
-        }
-
-        $usd = (int) round($minor * 1_000_000 / (int) $rates[$from]);
-
-        return (int) round($usd * (int) $rates[$to] / 1_000_000);
     }
 }

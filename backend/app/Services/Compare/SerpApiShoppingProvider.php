@@ -23,7 +23,7 @@ final class SerpApiShoppingProvider implements OfferProvider
 
     public function __construct(private readonly string $apiKey) {}
 
-    public function search(string $query): array
+    public function search(string $query, array $context = []): array
     {
         if ($this->apiKey === '') {
             throw new RuntimeException('SerpAPI key is not configured');
@@ -33,8 +33,8 @@ final class SerpApiShoppingProvider implements OfferProvider
             'engine' => 'google_shopping',
             'q' => $query,
             'api_key' => $this->apiKey,
-            'gl' => 'us',
-            'hl' => 'en',
+            'gl' => (string) ($context['gl'] ?? 'us'),
+            'hl' => (string) ($context['hl'] ?? 'en'),
             'num' => 16,
         ]);
         $rows = $shopping['shopping_results'] ?? null;
@@ -202,6 +202,7 @@ final class SerpApiShoppingProvider implements OfferProvider
         }
         $title = trim((string) ($store['title'] ?? $model));
         $shipping = $this->shipping($store);
+        $tax = $this->tax($store);
         $details = strtolower(implode(' ', array_map(
             fn (mixed $line): string => is_string($line) ? $line : '',
             is_array($store['details_and_offers'] ?? null) ? $store['details_and_offers'] : [],
@@ -217,8 +218,14 @@ final class SerpApiShoppingProvider implements OfferProvider
             'price_minor' => (int) round(((float) $price) * 100),
             'shipping_minor' => $shipping['minor'],
             'shipping_known' => $shipping['known'],
+            'tax_minor' => $tax['minor'],
+            'tax_known' => $tax['known'],
+            'tax_included' => $tax['included'],
             'currency' => 'USD',
             'availability' => str_contains($details, 'out of stock') ? 'out_of_stock' : 'in_stock',
+            'rating' => is_numeric($store['rating'] ?? null) ? (float) $store['rating'] : null,
+            'review_count' => is_numeric($store['reviews'] ?? null) ? (int) $store['reviews'] : null,
+            'ships_to' => null,
         ];
     }
 
@@ -275,5 +282,33 @@ final class SerpApiShoppingProvider implements OfferProvider
         }
 
         return ['known' => false, 'minor' => null];
+    }
+
+    /**
+     * @param  array<string, mixed>  $store
+     * @return array{known: bool, included: bool, minor: int|null}
+     */
+    private function tax(array $store): array
+    {
+        $text = strtolower(trim((string) ($store['tax'] ?? '')));
+        if ($text === '' && is_array($store['details_and_offers'] ?? null)) {
+            foreach ($store['details_and_offers'] as $line) {
+                if (is_string($line) && preg_match('/\btax\b|\bvat\b/i', $line) === 1) {
+                    $text = strtolower(trim($line));
+                    break;
+                }
+            }
+        }
+        if ($text === '') {
+            return ['known' => false, 'included' => false, 'minor' => null];
+        }
+        if (preg_match('/incl(?:uded|\.)?|includes|incl\b/i', $text) === 1) {
+            return ['known' => true, 'included' => true, 'minor' => 0];
+        }
+        if (preg_match('/(?:\$|USD\s*|€|£)\s*(\d+(?:\.\d{1,2})?)/i', $text, $match) === 1) {
+            return ['known' => true, 'included' => false, 'minor' => (int) round(((float) $match[1]) * 100)];
+        }
+
+        return ['known' => false, 'included' => false, 'minor' => null];
     }
 }

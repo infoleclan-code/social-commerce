@@ -127,7 +127,7 @@ final class AbuseRulesTest extends TestCase
     {
         $commands = collect(app(Schedule::class)->events())->map(fn ($event): string => (string) $event->command)->implode("\n");
         $money = ['payments:capture-due', 'payments:reconcile', 'ledger:release-commissions', 'price-protection:sweep', 'gifts:refund-expired', 'drops:rotate'];
-        foreach (['idempotency:prune', 'ledger:verify', 'prices:check-alerts', 'db:backup'] as $job) {
+        foreach (['idempotency:prune', 'ledger:verify', 'prices:check-alerts', 'prices:snapshot', 'fx:refresh', 'db:backup'] as $job) {
             $this->assertStringContainsString($job, $commands);
         }
         foreach ($money as $job) {

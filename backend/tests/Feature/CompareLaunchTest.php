@@ -103,7 +103,7 @@ final class CompareLaunchTest extends TestCase
         ], 3600);
         $this->app->instance(OfferProvider::class, new class implements OfferProvider
         {
-            public function search(string $query): array
+            public function search(string $query, array $context = []): array
             {
                 throw new RuntimeException('down');
             }
@@ -249,7 +249,7 @@ final class CompareLaunchTest extends TestCase
     {
         $this->app->instance(OfferProvider::class, new class implements OfferProvider
         {
-            public function search(string $query): array
+            public function search(string $query, array $context = []): array
             {
                 return [
                     [

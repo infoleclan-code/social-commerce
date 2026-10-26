@@ -33,6 +33,7 @@ final class CheckPriceAlerts extends Command
                     'in_stock' => true,
                     'sort' => 'total_asc',
                     'currency' => (string) $row->currency,
+                    'country' => $row->country ?: 'US',
                 ]);
             } catch (Throwable) {
                 continue;
@@ -42,31 +43,35 @@ final class CheckPriceAlerts extends Command
                 continue;
             }
             $previous = $row->best_total_minor !== null ? (int) $row->best_total_minor : null;
+            $target = $row->target_minor !== null ? (int) $row->target_minor : null;
             DB::table('wishlists')->where('id', $row->id)->update([
                 'best_total_minor' => $best,
                 'updated_at' => now(),
             ]);
-            if ($previous === null || $best >= $previous) {
+            $dropped = $previous !== null && $best < $previous;
+            $hitTarget = $target !== null && $best <= $target && ($previous === null || $previous > $target);
+            if (! $dropped && ! $hitTarget) {
                 continue;
             }
             $user = User::query()->find($row->user_id);
             if ($user === null || $user->anonymized_at !== null) {
                 continue;
             }
+            $reason = $hitTarget && ! $dropped ? 'target' : 'drop';
             try {
-                Mail::to($user->email)->send(new PriceDropAlert((string) $row->query, (string) $row->currency, $best));
+                Mail::to($user->email)->send(new PriceDropAlert((string) $row->query, (string) $row->currency, $best, $reason));
                 $sent++;
             } catch (Throwable) {
                 // The stored price is already updated; a mail outage can retry next hour.
             }
-            $this->push($user->id, (string) $row->query, (string) $row->currency, $best);
+            $this->push($user->id, (string) $row->query, (string) $row->currency, $best, $reason);
         }
         $this->info('Price alerts sent: '.$sent);
 
         return self::SUCCESS;
     }
 
-    private function push(string $userId, string $query, string $currency, int $total): void
+    private function push(string $userId, string $query, string $currency, int $total, string $reason): void
     {
         $tokens = DB::table('user_devices')
             ->where('user_id', $userId)
@@ -77,7 +82,7 @@ final class CheckPriceAlerts extends Command
             try {
                 Http::timeout(4)->post('https://exp.host/--/api/v2/push/send', [
                     'to' => $token,
-                    'title' => 'Price drop',
+                    'title' => $reason === 'target' ? 'Target price' : 'Price drop',
                     'body' => $query.' is now '.$currency.' '.number_format($total / 100, 2),
                 ]);
             } catch (Throwable) {

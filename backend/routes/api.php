@@ -6,6 +6,7 @@ use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\CommerceController;
+use App\Http\Controllers\CompareAdminController;
 use App\Http\Controllers\CompareController;
 use App\Http\Controllers\DeviceController;
 use App\Http\Controllers\DifferentiatorController;
@@ -17,6 +18,7 @@ use App\Http\Controllers\HabitScaleController;
 use App\Http\Controllers\HashtagController;
 use App\Http\Controllers\Phase1Controller;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\ShopController;
 use App\Http\Controllers\SocialController;
 use App\Http\Controllers\StripeWebhookController;
 use App\Http\Controllers\WishlistController;
@@ -70,7 +72,11 @@ Route::prefix('v1')->group(function (): void {
         Route::get('hashtags/posts', [HashtagController::class, 'posts'])->middleware('throttle:hashtag-read');
 
         Route::get('compare', [CompareController::class, 'index'])->middleware('throttle:compare');
+        Route::get('compare/history', [CompareController::class, 'history'])->middleware('throttle:compare');
+        Route::post('compare/visual', [CompareController::class, 'visual'])->middleware('throttle:compare');
         Route::post('compare/clicks', [CompareController::class, 'click'])->middleware('throttle:compare');
+        Route::get('shop', [ShopController::class, 'show'])->middleware('throttle:compare');
+        Route::put('shop', [ShopController::class, 'update'])->middleware('throttle:compare');
         Route::get('wishlist', [WishlistController::class, 'index'])->middleware('throttle:compare');
         Route::post('wishlist', [WishlistController::class, 'store'])->middleware('throttle:compare');
         Route::delete('wishlist/{item}', [WishlistController::class, 'destroy'])->middleware('throttle:compare');
@@ -211,5 +217,10 @@ Route::prefix('v1')->group(function (): void {
         Route::get('users', [AdminController::class, 'users']);
         Route::post('users/{user}/ban', [AdminController::class, 'ban']);
         Route::post('users/{user}/unban', [AdminController::class, 'unban']);
+        Route::get('stores', [CompareAdminController::class, 'stores']);
+        Route::post('stores', [CompareAdminController::class, 'setStore']);
+        Route::get('coupons', [CompareAdminController::class, 'coupons']);
+        Route::post('coupons', [CompareAdminController::class, 'storeCoupon']);
+        Route::delete('coupons/{coupon}', [CompareAdminController::class, 'destroyCoupon']);
     });
 });

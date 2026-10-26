@@ -20,11 +20,14 @@ final class PriceDropAlert extends Mailable
         public readonly string $query,
         public readonly string $currency,
         public readonly int $totalMinor,
+        public readonly string $reason = 'drop',
     ) {}
 
     public function envelope(): Envelope
     {
-        return new Envelope(subject: 'Price drop: '.$this->query);
+        $prefix = $this->reason === 'target' ? 'Target price' : 'Price drop';
+
+        return new Envelope(subject: $prefix.': '.$this->query);
     }
 
     public function content(): Content

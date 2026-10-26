@@ -21,9 +21,11 @@ return [
     'affiliate_id' => env('AFFILIATE_ID', ''),
 
     /*
-     * Approximate static rates, units per 1 USD times 1_000_000. Not a live FX feed.
-     * USD 1.00, EUR 0.92, GBP 0.79.
+     * Live rates are refreshed by fx:refresh from FX_FEED_URL (Frankfurter v1 or v2).
+     * These static rates are the fallback when the feed has not succeeded yet.
+     * Units per 1 USD times 1_000_000. USD 1.00, EUR 0.92, GBP 0.79.
      */
+    'fx_url' => env('FX_FEED_URL', 'https://api.frankfurter.dev/v1/latest?from=USD'),
     'rates' => [
         'USD' => 1_000_000,
         'EUR' => 920_000,

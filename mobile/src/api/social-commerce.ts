@@ -510,4 +510,6 @@ export const adminApi = {
   unhidePost: (token: string, postId: string) => adminSend<{ hidden: boolean }>(token, `/admin/posts/${postId}/unhide`, 'POST', {}),
   removeComment: (token: string, commentId: string) => api(`/admin/comments/${commentId}`, { method: 'DELETE' }, { token }).then(() => undefined),
   banUser: (token: string, userId: string) => adminSend<{ banned: boolean }>(token, `/admin/users/${userId}/ban`, 'POST', {}),
+  setStore: (token: string, host: string, status: 'open' | 'flagged' | 'blocked') => adminSend<{ host: string; status: string }>(token, '/admin/stores', 'POST', { host, status }),
+  addCoupon: (token: string, host: string, code: string, label: string) => adminSend<{ id: string }>(token, '/admin/coupons', 'POST', { host, code, label }),
 };

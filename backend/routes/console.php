@@ -34,6 +34,8 @@ Schedule::command('idempotency:prune')->daily()->onOneServer();
 Schedule::command('accounts:anonymize-due')->daily()->onOneServer();
 Schedule::command('db:backup')->dailyAt('02:10')->withoutOverlapping(60)->onOneServer();
 Schedule::command('prices:check-alerts')->hourly()->withoutOverlapping(30)->onOneServer();
+Schedule::command('prices:snapshot')->hourly()->withoutOverlapping(30)->onOneServer();
+Schedule::command('fx:refresh')->everySixHours()->withoutOverlapping(30)->onOneServer();
 
 Artisan::command('accounts:anonymize-due', function (): void {
     $ids = DB::table('users')

@@ -6,16 +6,22 @@ namespace App\Http\Controllers;
 
 use App\Exceptions\ApiException;
 use App\Services\Compare\CompareService;
+use App\Services\Compare\FxRates;
+use App\Services\Compare\Region;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Throwable;
 
 /** Saved searches. A price drop is emailed later by prices:check-alerts. */
 final class WishlistController extends Controller
 {
-    public function __construct(private readonly CompareService $compare) {}
+    public function __construct(
+        private readonly CompareService $compare,
+        private readonly FxRates $fx,
+    ) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -35,16 +41,23 @@ final class WishlistController extends Controller
             'query' => ['required', 'string', 'min:2', 'max:120'],
             'brand' => ['sometimes', 'nullable', 'string', 'max:80'],
             'size' => ['sometimes', 'nullable', 'string', 'max:40'],
-            'currency' => ['sometimes', 'in:USD,EUR,GBP'],
+            'currency' => ['sometimes', 'regex:/^[A-Za-z]{3}$/'],
+            'country' => ['sometimes', 'nullable', 'regex:/^[A-Za-z]{2}$/'],
+            'target_minor' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:100000000'],
             'notify' => ['sometimes', 'boolean'],
         ]);
         $user = $request->user();
         $query = trim($data['query']);
         $brand = $this->blank($data['brand'] ?? null);
         $size = $this->blank($data['size'] ?? null);
-        $currency = $data['currency'] ?? 'USD';
+        $currency = strtoupper($data['currency'] ?? ($user->shop_currency ?: 'USD'));
+        if (! $this->fx->supports($currency)) {
+            throw ValidationException::withMessages(['currency' => 'Choose a currency we have a rate for.']);
+        }
+        $country = Region::country($data['country'] ?? $user->shop_country) ?? 'US';
         $notify = array_key_exists('notify', $data) ? $request->boolean('notify') : true;
-        $best = $this->best($query, $brand, $size, $currency);
+        $target = array_key_exists('target_minor', $data) && $data['target_minor'] !== null ? (int) $data['target_minor'] : null;
+        $best = $this->best($query, $brand, $size, $currency, $country);
         $existing = $this->find($user->id, $query, $brand, $size, $currency);
         $now = now();
 
@@ -57,6 +70,8 @@ final class WishlistController extends Controller
                 'brand' => $brand,
                 'size' => $size,
                 'currency' => $currency,
+                'country' => $country,
+                'target_minor' => $target,
                 'best_total_minor' => $best,
                 'notify' => $notify,
                 'created_at' => $now,
@@ -66,6 +81,8 @@ final class WishlistController extends Controller
             $id = (string) $existing->id;
             DB::table('wishlists')->where('id', $id)->update([
                 'best_total_minor' => $best ?? $existing->best_total_minor,
+                'country' => $country,
+                'target_minor' => array_key_exists('target_minor', $data) ? $target : $existing->target_minor,
                 'notify' => $notify,
                 'updated_at' => $now,
             ]);
@@ -89,7 +106,7 @@ final class WishlistController extends Controller
         return new JsonResponse(null, 204);
     }
 
-    private function best(string $query, ?string $brand, ?string $size, string $currency): ?int
+    private function best(string $query, ?string $brand, ?string $size, string $currency, string $country): ?int
     {
         try {
             $result = $this->compare->search($query, [
@@ -100,6 +117,7 @@ final class WishlistController extends Controller
                 'in_stock' => true,
                 'sort' => 'total_asc',
                 'currency' => $currency,
+                'country' => $country,
             ]);
         } catch (Throwable) {
             return null;
@@ -136,6 +154,8 @@ final class WishlistController extends Controller
             'brand' => $row->brand !== null ? (string) $row->brand : null,
             'size' => $row->size !== null ? (string) $row->size : null,
             'currency' => (string) $row->currency,
+            'country' => $row->country !== null ? (string) $row->country : null,
+            'target_minor' => $row->target_minor !== null ? (int) $row->target_minor : null,
             'best_total_minor' => $row->best_total_minor !== null ? (int) $row->best_total_minor : null,
             'notify' => (bool) $row->notify,
             'updated_at' => (string) $row->updated_at,

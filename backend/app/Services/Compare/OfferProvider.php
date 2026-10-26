@@ -10,23 +10,16 @@ namespace App\Services\Compare;
  * price_minor and shipping_minor are integer minor units of `currency`.
  * shipping_known false means the provider did not say, which is not the same as free.
  * availability is `in_stock` or `out_of_stock`.
+ * tax_known false means the provider did not say. tax_included means the item price already contains it.
+ * ships_to null means the provider did not say which countries it delivers to.
+ *
+ * @param  array{country?: string, gl?: string, hl?: string}  $context
  */
 interface OfferProvider
 {
     /**
-     * @return list<array{
-     *     store: string,
-     *     title: string,
-     *     url: string,
-     *     brand: string,
-     *     model: string,
-     *     size: string|null,
-     *     price_minor: int,
-     *     shipping_minor: int|null,
-     *     shipping_known: bool,
-     *     currency: string,
-     *     availability: string
-     * }>
+     * @param  array{country?: string, gl?: string, hl?: string}  $context
+     * @return list<array<string, mixed>>
      */
-    public function search(string $query): array;
+    public function search(string $query, array $context = []): array;
 }

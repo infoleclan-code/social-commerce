@@ -9,7 +9,7 @@ use RuntimeException;
 /** Used when a real provider is selected and its credentials are missing. */
 final class UnavailableOfferProvider implements OfferProvider
 {
-    public function search(string $query): array
+    public function search(string $query, array $context = []): array
     {
         throw new RuntimeException('Offer provider is not configured');
     }

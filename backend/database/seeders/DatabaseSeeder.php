@@ -13,5 +13,6 @@ class DatabaseSeeder extends Seeder
         $this->call(DemoCatalogSeed::class);
         $this->call(DemoAccountsSeeder::class);
         $this->call(DemoReelsSeeder::class);
+        $this->call(CompareDemoSeeder::class);
     }
 }

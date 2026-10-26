@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "Price comparison",
+  "version": "1.0.0",
+  "description": "On a product page, check whether another store is cheaper.",
+  "permissions": ["storage"],
+  "host_permissions": ["https://*/*", "http://127.0.0.1/*", "http://localhost/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Price comparison"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://*/*", "http://*/*"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "compare@example.com",
+      "strict_min_version": "128.0"
+    }
+  }
+}

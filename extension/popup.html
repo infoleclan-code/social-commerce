@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Price comparison</title>
+    <style>
+      body { font: 14px/1.4 system-ui, sans-serif; width: 280px; margin: 12px; color: #1c1917; }
+      label { display: block; margin-top: 10px; font-weight: 600; }
+      input { width: 100%; box-sizing: border-box; margin-top: 4px; padding: 6px 8px; }
+      button { margin-top: 12px; padding: 8px 12px; font-weight: 700; }
+      p { color: #57534e; }
+    </style>
+  </head>
+  <body>
+    <p>Paste the API origin and a Sanctum token from the app. On a product page the extension asks whether another store is cheaper.</p>
+    <label for="api">API base URL</label>
+    <input id="api" type="url" placeholder="https://api.example.com" autocomplete="off" />
+    <label for="token">Access token</label>
+    <input id="token" type="password" autocomplete="off" />
+    <button id="save" type="button">Save</button>
+    <p id="status"></p>
+    <script src="popup.js"></script>
+  </body>
+</html>

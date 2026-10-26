@@ -1,0 +1,18 @@
+aside[data-compare='offer'] {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 2147483646;
+  max-width: 240px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #1c1917;
+  color: #fafaf9;
+  font: 13px/1.4 system-ui, sans-serif;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+
+aside[data-compare='offer'] strong {
+  display: block;
+  margin-bottom: 4px;
+}

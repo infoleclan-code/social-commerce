@@ -15,10 +15,26 @@ Laravel 12 (`laravel/framework` ^12) and PostgreSQL back the API. The Expo app i
 
 ## Compare prices
 
-`GET /api/v1/compare?q=nike` ranks offers by item price plus shipping when shipping is known, in
-`USD`, `EUR`, or `GBP` (static approximate rates, not a live FX feed). Unknown shipping is not
-treated as free. Out-of-stock offers are not shown as current. Filters: `brand`, `size`,
-`min_minor`, `max_minor`, `in_stock`, `sort` (`total_asc`, `total_desc`, `price_asc`).
+`GET /api/v1/compare?q=nike` ranks the top three in-stock offers from different stores by landed
+total: item price, plus shipping when the store published it, plus tax or VAT when the store
+published it and it is not already included in the item price. Unknown shipping or tax is labeled
+and is not treated as free. A currency with no rate is dropped rather than relabeled. Prices are
+converted with rates from `fx:refresh` (`FX_FEED_URL`, Frankfurter by default). Until that feed
+succeeds, `USD`, `EUR`, and `GBP` use the static fallback in `config/compare.php`.
+
+`country` (or the shopper’s saved country, or a proxy country header / Accept-Language) is sent to
+the provider as `gl` and `hl`. `GET /api/v1/shop` and `PUT /api/v1/shop` store the override. The
+public profile does not include it. When a store lists the countries it ships to, the offer says
+whether that includes the shopper’s country.
+
+`GET /api/v1/compare/history` returns up to 90 days of observed landed prices and a hint:
+`good_now`, `wait`, `typical`, or `learning`. `prices:snapshot` (hourly) re-checks recent searches
+and saved alerts so the chart gains a point. Filters: `brand`, `size`, `min_minor`, `max_minor`,
+`in_stock`, `sort` (`total_asc`, `total_desc`, `price_asc`), `currency`, `country`.
+
+`POST /api/v1/compare/visual` accepts a JPEG, PNG, or WebP up to 500 KB. With the fake provider it
+uses the demo Nike search. With SerpAPI it uploads the image and reads the first Google Lens product
+title, then runs the same top-3 search. Out-of-stock offers are not shown as current.
 
 `POST /api/v1/compare/clicks` with `offer_id` records the store host and returns the https URL,
 appending `AFFILIATE_QUERY_PARAM` and `AFFILIATE_ID` when both are set. The client cannot submit an
@@ -38,9 +54,24 @@ when the store published a currency amount or an unconditional “Free delivery�
 currency missing from the rate table is dropped rather than relabeled. Store links must be https and
 must not point at SerpAPI, Google, or an IP address.
 
-`POST /api/v1/wishlist` saves a search. `prices:check-alerts` (hourly) emails, and pushes when a device
-token is registered, if the best in-stock total drops. Registration sends a welcome email. Mail uses
-`MAIL_MAILER` (`log` locally, `smtp` in `.env.production.example`).
+`POST /api/v1/wishlist` saves a search. An optional `target_minor` alerts when the best in-stock total
+reaches that price. `prices:check-alerts` (hourly) emails, and sends an Expo push when a device token
+is registered, on a drop or a newly reached target. It does not repeat a target that was already met.
+Registration sends a welcome email. Mail uses `MAIL_MAILER` (`log` locally, `smtp` in `.env.production.example`).
+
+Store ratings and review counts come from the provider when it publishes them. A rating of 4 or more
+with at least 100 reviews is labeled trusted. Admins flag or block a host with `POST /api/v1/admin/stores`
+(`open`, `flagged`, or `blocked`). A blocked host is left out of results and its link is refused.
+`POST /api/v1/admin/coupons` adds a code for a store host; matching offers include it.
+
+`extension/` is a Manifest V3 Chrome and Firefox extension. The popup stores the API base URL and a
+Sanctum token. On a product page it asks the API whether another store is cheaper.
+
+SerpAPI shopping and immersive results often omit tax and the countries a store ships to. Those stay
+unknown and are labeled. Google Lens needs `SERPAPI_API_KEY`. Currencies beyond the static fallback
+appear after `fx:refresh` succeeds. The owner must supply, when they want live prices, photos, and
+mail: `SERPAPI_API_KEY`, `FX_FEED_URL` (optional; a default is set), `AFFILIATE_QUERY_PARAM`,
+`AFFILIATE_ID`, `SENTRY_LARAVEL_DSN`, and the `MAIL_*` SMTP settings.
 
 ## Launch
 
@@ -62,9 +93,7 @@ token is registered, if the best in-stock total drops. Registration sends a welc
 - CI runs Pint, PHPUnit with `COMMERCE_PURCHASES=true`, PHPUnit again with `COMMERCE_PURCHASES=false`
   (purchase tests are grouped and skipped), `tsc`, ESLint, and `npm audit` (the audit step is report-only).
 
-The owner must supply, when they want live prices and mail: `SERPAPI_API_KEY`, `AFFILIATE_QUERY_PARAM`,
-`AFFILIATE_ID`, `SENTRY_LARAVEL_DSN`, and the `MAIL_*` SMTP settings. `APP_KEY` is generated per
-environment and is not committed.
+`APP_KEY` is generated per environment and is not committed.
 
 Demo buyer: `buyer@example.com` / `correct-horse` / `demo_buyer`. The admin password and TOTP secret
 are generated by `php artisan db:seed --class=Database\\Seeders\\DemoAccountsSeeder` and printed once.

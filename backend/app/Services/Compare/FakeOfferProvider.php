@@ -13,7 +13,7 @@ final class FakeOfferProvider implements OfferProvider
     /** @var list<string> */
     private const STOPWORDS = ['sneakers', 'sneaker', 'shoes', 'shoe', 'trainers', 'the', 'a', 'for', 'men', 'women', 'kids'];
 
-    public function search(string $query): array
+    public function search(string $query, array $context = []): array
     {
         $tokens = $this->tokens($query);
         if ($tokens === []) {
@@ -47,14 +47,14 @@ final class FakeOfferProvider implements OfferProvider
     private static function catalog(): array
     {
         return [
-            self::row('Finish Line', 'Nike Dunk Low', 'https://www.finishline.com/nike-dunk-low', 'Nike', 'Dunk Low', '10', 10_500, 0, true, 'in_stock'),
-            self::row("Dick's", 'Nike Dunk Low', 'https://www.dickssportinggoods.com/nike-dunk-low', 'Nike', 'Dunk Low', '10', 9_900, 1_200, true, 'in_stock'),
-            self::row('Foot Locker', 'Nike Dunk Low', 'https://www.footlocker.com/nike-dunk-low', 'Nike', 'Dunk Low', '10', 11_000, 800, true, 'in_stock'),
-            self::row('Nike', 'Nike Dunk Low', 'https://www.nike.com/dunk-low', 'Nike', 'Dunk Low', '10', 12_000, 0, true, 'in_stock'),
-            self::row('StockX', 'Nike Dunk Low', 'https://stockx.com/nike-dunk-low', 'Nike', 'Dunk Low', '10', 9_500, 0, true, 'out_of_stock'),
-            self::row('adidas', 'Adidas Samba', 'https://www.adidas.com/samba', 'Adidas', 'Samba', '9', 10_000, 0, true, 'in_stock'),
-            self::row('Foot Locker', 'Adidas Samba', 'https://www.footlocker.com/samba', 'Adidas', 'Samba', '9', 9_500, 1_000, true, 'in_stock'),
-            self::row('JD Sports', 'Adidas Samba', 'https://www.jdsports.com/samba', 'Adidas', 'Samba', '9', 9_000, 0, true, 'out_of_stock'),
+            self::row('Finish Line', 'Nike Dunk Low', 'https://www.finishline.com/nike-dunk-low', 'Nike', 'Dunk Low', '10', 10_500, 0, true, 'in_stock', 4.6, 2400, ['US', 'CA', 'GB', 'DE', 'FR']),
+            self::row("Dick's", 'Nike Dunk Low', 'https://www.dickssportinggoods.com/nike-dunk-low', 'Nike', 'Dunk Low', '10', 9_900, 1_200, true, 'in_stock', 4.2, 800, ['US', 'CA']),
+            self::row('Foot Locker', 'Nike Dunk Low', 'https://www.footlocker.com/nike-dunk-low', 'Nike', 'Dunk Low', '10', 11_000, 800, true, 'in_stock', 3.4, 90, ['US', 'GB', 'DE', 'FR', 'AU']),
+            self::row('Nike', 'Nike Dunk Low', 'https://www.nike.com/dunk-low', 'Nike', 'Dunk Low', '10', 12_000, 0, true, 'in_stock', 4.8, 12000, null),
+            self::row('StockX', 'Nike Dunk Low', 'https://stockx.com/nike-dunk-low', 'Nike', 'Dunk Low', '10', 9_500, 0, true, 'out_of_stock', 3.1, 40, ['US']),
+            self::row('adidas', 'Adidas Samba', 'https://www.adidas.com/samba', 'Adidas', 'Samba', '9', 10_000, 0, true, 'in_stock', 4.7, 3000, ['US', 'DE', 'FR', 'GB']),
+            self::row('Foot Locker', 'Adidas Samba', 'https://www.footlocker.com/samba', 'Adidas', 'Samba', '9', 9_500, 1_000, true, 'in_stock', 3.4, 90, ['US', 'GB', 'DE', 'FR', 'AU']),
+            self::row('JD Sports', 'Adidas Samba', 'https://www.jdsports.com/samba', 'Adidas', 'Samba', '9', 9_000, 0, true, 'out_of_stock', 4.1, 500, ['GB', 'DE', 'FR']),
         ];
     }
 
@@ -70,6 +70,9 @@ final class FakeOfferProvider implements OfferProvider
         ?int $shipping,
         bool $shippingKnown,
         string $availability,
+        ?float $rating = null,
+        ?int $reviews = null,
+        ?array $ships = null,
     ): array {
         return [
             'store' => $store,
@@ -81,8 +84,14 @@ final class FakeOfferProvider implements OfferProvider
             'price_minor' => $price,
             'shipping_minor' => $shippingKnown ? $shipping : null,
             'shipping_known' => $shippingKnown,
+            'tax_minor' => null,
+            'tax_known' => false,
+            'tax_included' => false,
             'currency' => 'USD',
             'availability' => $availability,
+            'rating' => $rating,
+            'review_count' => $reviews,
+            'ships_to' => $ships,
         ];
     }
 }

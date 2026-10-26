@@ -19,6 +19,9 @@ export function AdminScreen() {
   const [otp, setOtp] = useState('');
   const [session, setSession] = useState<AdminSession | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const [storeHost, setStoreHost] = useState('');
+  const [couponCode, setCouponCode] = useState('');
+  const [couponLabel, setCouponLabel] = useState('');
   const token = session?.token ?? '';
   const panel = useQuery({
     queryKey: ['admin', token, purchasesEnabled],
@@ -114,6 +117,20 @@ export function AdminScreen() {
               <Text style={pillText}>{`${t('admin.ban')} ${member.username}`}</Text>
             </Pressable>
           ))}
+          <TextInput accessibilityLabel={t('admin.storeHost')} autoCapitalize="none" onChangeText={setStoreHost} placeholder={t('admin.storeHost')} placeholderTextColor={palette.faint} style={field} value={storeHost} />
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Pressable accessibilityRole="button" onPress={() => void run(() => adminApi.setStore(token, storeHost.trim(), 'flagged'))} style={pill}>
+              <Text style={pillText}>{t('admin.flagStore')}</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" onPress={() => void run(() => adminApi.setStore(token, storeHost.trim(), 'blocked'))} style={pill}>
+              <Text style={pillText}>{t('admin.blockStore')}</Text>
+            </Pressable>
+          </View>
+          <TextInput accessibilityLabel={t('admin.couponCode')} autoCapitalize="characters" onChangeText={setCouponCode} placeholder={t('admin.couponCode')} placeholderTextColor={palette.faint} style={field} value={couponCode} />
+          <TextInput accessibilityLabel={t('admin.couponLabel')} onChangeText={setCouponLabel} placeholder={t('admin.couponLabel')} placeholderTextColor={palette.faint} style={field} value={couponLabel} />
+          <Pressable accessibilityRole="button" onPress={() => void run(() => adminApi.addCoupon(token, storeHost.trim(), couponCode.trim(), couponLabel.trim()))} style={pill}>
+            <Text style={pillText}>{t('admin.addCoupon')}</Text>
+          </Pressable>
         </View>
       )}
       {panel.isError ? <Text style={{ color: palette.goldSoft }}>{failure(panel.error, false)}</Text> : null}
